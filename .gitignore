@@ -1,0 +1,7 @@
+.claude/
+.gradle/
+.idea/
+.kotlin/
+build/
+out/
+.superpowers/brainstorm/
