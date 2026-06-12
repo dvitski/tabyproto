@@ -166,6 +166,15 @@ class TabyDeviceMonitorTest {
         assertEquals(listOf("COM3", "COM3"), h.probeCalls)
     }
 
+    // ── Initial manual hosts normalization ─────────────────────────────────────
+
+    @Test
+    fun `initial manual hosts are normalized and deduped on construction`() = runTest {
+        val h = Harness(manualHosts = listOf("http://taby.local/", "https://taby.local", " taby.local "))
+
+        assertEquals(listOf("taby.local"), h.monitor.manualHosts.value)
+    }
+
     // ── WiFi polling & manual hosts ────────────────────────────────────────────
 
     @Test

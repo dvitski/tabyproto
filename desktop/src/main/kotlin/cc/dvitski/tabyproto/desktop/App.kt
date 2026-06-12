@@ -103,15 +103,14 @@ class AppState {
     }
 
     suspend fun sendAnimation(animation: Animation): Result<Unit> {
-        if (_sendingAnimation.value != null) {
-            return Result.failure(IllegalStateException("Still sending ${_sendingAnimation.value?.id}"))
-        }
         val device = devices.value.firstOrNull { it.id == _activeDeviceId.value }
             ?: return Result.failure(IllegalStateException("No Taby connected"))
         if (!device.online) {
             return Result.failure(IllegalStateException("${device.label} is offline"))
         }
-        _sendingAnimation.value = animation
+        if (!_sendingAnimation.compareAndSet(null, animation)) {
+            return Result.failure(IllegalStateException("Still sending ${_sendingAnimation.value?.id ?: "an animation"}"))
+        }
         return try {
             val result = monitor.session(device).play(animation)
             if (result.ok) {

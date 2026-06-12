@@ -54,7 +54,9 @@ class TabyDeviceMonitor internal constructor(
     private val _devices = MutableStateFlow<List<TabyDevice>>(emptyList())
     val devices: StateFlow<List<TabyDevice>> = _devices.asStateFlow()
 
-    private val _manualHosts = MutableStateFlow(initialManualHosts.distinct())
+    private val _manualHosts = MutableStateFlow(
+        initialManualHosts.map(::normalizeHost).filter { it.isNotEmpty() }.distinct()
+    )
     val manualHosts: StateFlow<List<String>> = _manualHosts.asStateFlow()
 
     // Never pruned by design — mDNS removal events are ignored; the health poll is the
