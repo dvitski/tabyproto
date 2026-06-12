@@ -16,8 +16,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import java.io.Closeable
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Discovers Taby devices on USB and WiFi, tracks their liveness, and owns
@@ -59,7 +61,7 @@ class TabyDeviceMonitor internal constructor(
     // Confined to the USB poll coroutine — plain mutable set is safe (no cross-coroutine access).
     private val nonTabyPorts = mutableSetOf<String>()
 
-    private val sessions = java.util.concurrent.ConcurrentHashMap<String, TabySession>()
+    private val sessions = ConcurrentHashMap<String, TabySession>()
     private val sessionMutex = Mutex()
 
     @Volatile private var closed = false
@@ -280,5 +282,33 @@ class TabyDeviceMonitor internal constructor(
 
     private fun remove(id: String) {
         _devices.update { list -> list.filterNot { it.id == id } }
+    }
+
+    companion object {
+        /** Creates a monitor wired to real USB serial ports, HTTP, and mDNS. */
+        operator fun invoke(
+            initialManualHosts: List<String> = emptyList(),
+            usbPollInterval: Duration = 2.seconds,
+            wifiPollInterval: Duration = 5.seconds,
+        ): TabyDeviceMonitor {
+            val usbClient = TabyUsbClient()
+            val wifiClients = ConcurrentHashMap<String, TabyWifiClient>()
+            fun clientFor(host: String): TabyWifiClient =
+                wifiClients.computeIfAbsent(host) { TabyWifiClient(it) }
+            return TabyDeviceMonitor(
+                initialManualHosts = initialManualHosts,
+                usbPollInterval = usbPollInterval,
+                wifiPollInterval = wifiPollInterval,
+                portLister = {
+                    usbClient.listCandidatePorts()
+                        .map { UsbPortRef(it.systemPortName, it.descriptivePortName) }
+                },
+                usbProber = { port -> usbClient.readInfo(port) },
+                healthChecker = { host -> clientFor(host).readHealth() },
+                usbSessionFactory = { port, info -> UsbTabySession(usbClient.openSession(port), info) },
+                wifiSessionFactory = { host, info -> WifiTabySession(clientFor(host), info) },
+                mdnsBrowserFactory = { onCandidate -> TabyMdnsBrowser(onCandidate) },
+            )
+        }
     }
 }
