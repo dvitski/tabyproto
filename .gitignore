@@ -1,4 +1,5 @@
 .claude/
+.diag/
 .gradle/
 .idea/
 .kotlin/
