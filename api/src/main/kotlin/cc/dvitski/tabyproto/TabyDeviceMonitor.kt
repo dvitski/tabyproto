@@ -57,6 +57,8 @@ class TabyDeviceMonitor internal constructor(
     private val _manualHosts = MutableStateFlow(initialManualHosts.distinct())
     val manualHosts: StateFlow<List<String>> = _manualHosts.asStateFlow()
 
+    // Never pruned by design — mDNS removal events are ignored; the health poll is the
+    // source of truth for offline, and entries are bounded by hosts seen on the LAN.
     private val mdnsHosts = CopyOnWriteArraySet<String>()
     // Confined to the USB poll coroutine — plain mutable set is safe (no cross-coroutine access).
     private val nonTabyPorts = mutableSetOf<String>()
