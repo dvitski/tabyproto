@@ -213,6 +213,7 @@ class TabyDeviceMonitorTest {
         h.monitor.addManualHost(" http://taby.local/ ")
         h.monitor.addManualHost("taby.local")
         h.monitor.addManualHost("   ")
+        h.monitor.addManualHost("https://taby.local/")
 
         assertEquals(listOf("taby.local"), h.monitor.manualHosts.value)
     }
@@ -240,5 +241,17 @@ class TabyDeviceMonitorTest {
         val device = h.device("wifi:192.168.1.77")!!
         assertTrue(device.online)
         assertEquals(DeviceSource.Wifi("192.168.1.77", manual = false), device.source)
+        assertEquals("192.168.1.77", device.label)
+    }
+
+    @Test
+    fun `host added both manually and via mdns retains manual flag`() = runTest {
+        val h = Harness(manualHosts = listOf("192.168.1.77"))
+        h.monitor.onMdnsCandidate("192.168.1.77")
+        h.healthResults["192.168.1.77"] = fakeInfo("taby-m")
+
+        h.monitor.pollWifiOnce()
+
+        assertEquals(DeviceSource.Wifi("192.168.1.77", manual = true), h.device("wifi:192.168.1.77")!!.source)
     }
 }

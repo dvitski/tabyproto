@@ -115,7 +115,7 @@ class TabyDeviceMonitor internal constructor(
     // ── Manual hosts ───────────────────────────────────────────────────────────
 
     private fun normalizeHost(host: String): String =
-        host.trim().removePrefix("http://").removeSuffix("/")
+        host.trim().removePrefix("http://").removePrefix("https://").removeSuffix("/")
 
     fun addManualHost(host: String) {
         val cleaned = normalizeHost(host)
