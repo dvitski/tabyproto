@@ -254,4 +254,76 @@ class TabyDeviceMonitorTest {
 
         assertEquals(DeviceSource.Wifi("192.168.1.77", manual = true), h.device("wifi:192.168.1.77")!!.source)
     }
+
+    // ── Session management ─────────────────────────────────────────────────────
+
+    @Test
+    fun `session is cached per device`() = runTest {
+        val h = Harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val device = h.device("usb:COM5")!!
+
+        val s1 = h.monitor.session(device)
+        val s2 = h.monitor.session(device)
+
+        assertSame(s1, s2)
+        assertEquals(1, h.sessions.size)
+    }
+
+    @Test
+    fun `session for offline device throws`() = runTest {
+        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        h.monitor.pollWifiOnce()  // unreachable → offline entry
+        val device = h.device("wifi:192.168.1.50")!!
+
+        assertFailsWith<IllegalStateException> { h.monitor.session(device) }
+    }
+
+    @Test
+    fun `session is closed and evicted when device goes offline`() = runTest {
+        val h = Harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val device = h.device("usb:COM5")!!
+        h.monitor.session(device)
+
+        h.ports = emptyList()
+        h.monitor.pollUsbOnce()
+
+        assertTrue(h.sessions.single().closed)
+    }
+
+    @Test
+    fun `new session is created after device comes back online`() = runTest {
+        val h = Harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val s1 = h.monitor.session(h.device("usb:COM5")!!)
+
+        h.ports = emptyList()
+        h.monitor.pollUsbOnce()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.monitor.pollUsbOnce()
+        val s2 = h.monitor.session(h.device("usb:COM5")!!)
+
+        assertTrue(s1 !== s2)
+        assertEquals(2, h.sessions.size)
+    }
+
+    @Test
+    fun `close closes all cached sessions`() = runTest {
+        val h = Harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        h.monitor.session(h.device("usb:COM5")!!)
+
+        h.monitor.close()
+
+        assertTrue(h.sessions.single().closed)
+    }
 }
