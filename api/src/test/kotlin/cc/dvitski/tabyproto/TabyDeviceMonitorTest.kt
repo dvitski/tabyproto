@@ -51,7 +51,7 @@ private class Harness(manualHosts: List<String> = emptyList()) {
             probeResults[port] ?: error("no taby on $port")
         },
         healthChecker = { host -> healthResults[host] ?: error("unreachable $host") },
-        usbSessionFactory = { _, info ->
+        usbSessionFactory = { _, info, _ ->
             FakeSession(TabyTransport.USB, info).also { sessions += it }
         },
         wifiSessionFactory = { _, info ->
@@ -334,5 +334,60 @@ class TabyDeviceMonitorTest {
         h.monitor.close()
 
         assertTrue(h.sessions.single().closed)
+    }
+
+    // ── USB disconnect event ───────────────────────────────────────────────────
+
+    @Test
+    fun `usb disconnect event marks device offline and closes session`() = runTest {
+        val h = Harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val device = h.device("usb:COM5")!!
+        h.monitor.session(device)
+
+        h.monitor.onUsbSessionDisconnected(device.id)
+
+        assertFalse(h.device("usb:COM5")!!.online)
+        assertTrue(h.sessions.single().closed)
+    }
+
+    @Test
+    fun `usb disconnect event is idempotent`() = runTest {
+        val h = Harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val device = h.device("usb:COM5")!!
+        h.monitor.session(device)
+
+        h.monitor.onUsbSessionDisconnected(device.id)
+        h.monitor.onUsbSessionDisconnected(device.id)
+
+        assertFalse(h.device("usb:COM5")!!.online)
+        assertTrue(h.sessions.single().closed)
+    }
+
+    @Test
+    fun `session created after disconnect reconnect works`() = runTest {
+        val h = Harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val device = h.device("usb:COM5")!!
+        val s1 = h.monitor.session(device)
+
+        // Simulate OS disconnect event while port stays enumerated (Windows pinned-handle behavior)
+        h.monitor.onUsbSessionDisconnected(device.id)
+        assertFalse(h.device("usb:COM5")!!.online)
+
+        // Next poll re-probes the (still-present) port and brings it back online
+        h.monitor.pollUsbOnce()
+
+        val s2 = h.monitor.session(h.device("usb:COM5")!!)
+        assertTrue(h.device("usb:COM5")!!.online)
+        assertTrue(s1 !== s2)
+        assertEquals(2, h.sessions.size)
     }
 }

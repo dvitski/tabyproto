@@ -43,7 +43,7 @@ class TabyDeviceMonitor internal constructor(
     private val portLister: () -> List<UsbPortRef>,
     private val usbProber: suspend (portName: String) -> DeviceInfo,
     private val healthChecker: suspend (host: String) -> DeviceInfo,
-    private val usbSessionFactory: suspend (portName: String, info: DeviceInfo) -> TabySession,
+    private val usbSessionFactory: suspend (portName: String, info: DeviceInfo, onDisconnect: () -> Unit) -> TabySession,
     private val wifiSessionFactory: suspend (host: String, info: DeviceInfo) -> TabySession,
     private val mdnsBrowserFactory: (onCandidate: (String) -> Unit) -> Closeable?,
 ) : Closeable {
@@ -256,7 +256,7 @@ class TabyDeviceMonitor internal constructor(
             val info = checkNotNull(current.info) { "No device info for ${device.label}" }
             sessions[device.id] ?: run {
                 val session = when (val src = current.source) {
-                    is DeviceSource.Usb -> usbSessionFactory(src.portName, info)
+                    is DeviceSource.Usb -> usbSessionFactory(src.portName, info) { scope.launch { onUsbSessionDisconnected(device.id) } }
                     is DeviceSource.Wifi -> wifiSessionFactory(src.host, info)
                 }
                 sessions[device.id] = session
@@ -268,6 +268,12 @@ class TabyDeviceMonitor internal constructor(
         sessionMutex.withLock {
             sessions.remove(id)?.let { runCatching { it.close() } }
         }
+    }
+
+    /** Invoked when an open USB session's port reports device removal. */
+    internal suspend fun onUsbSessionDisconnected(deviceId: String) {
+        evictSession(deviceId)
+        update(deviceId) { it.copy(online = false) }
     }
 
     // ── Registry helpers ───────────────────────────────────────────────────────
@@ -309,7 +315,11 @@ class TabyDeviceMonitor internal constructor(
                 },
                 usbProber = { port -> usbClient.readInfo(port) },
                 healthChecker = { host -> clientFor(host).readHealth() },
-                usbSessionFactory = { port, info -> UsbTabySession(usbClient.openSession(port), info) },
+                usbSessionFactory = { port, info, onDisconnect ->
+                    val usbSession = usbClient.openSession(port)
+                    usbSession.onDisconnect(onDisconnect)
+                    UsbTabySession(usbSession, info)
+                },
                 wifiSessionFactory = { host, info -> WifiTabySession(clientFor(host), info) },
                 mdnsBrowserFactory = { onCandidate -> TabyMdnsBrowser(onCandidate) },
             )

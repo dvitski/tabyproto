@@ -1,6 +1,8 @@
 package cc.dvitski.tabyproto
 
 import com.fazecast.jSerialComm.SerialPort
+import com.fazecast.jSerialComm.SerialPortDataListener
+import com.fazecast.jSerialComm.SerialPortEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -10,6 +12,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.io.Closeable
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.milliseconds
 
 private class FoundTabyException(val port: TabyUsbPort) : Exception()
@@ -151,6 +154,26 @@ internal class TabyUsbClient {
      */
     inner class TabyUsbSession(val portName: String, private val port: SerialPort) : Closeable {
 
+        private val disconnected = AtomicBoolean(false)
+
+        /**
+         * Registers [callback] to fire once when the OS reports the device gone
+         * (the event spams repeatedly on Windows, hence the once-guard).
+         */
+        fun onDisconnect(callback: () -> Unit) {
+            port.addDataListener(object : SerialPortDataListener {
+                override fun getListeningEvents() = SerialPort.LISTENING_EVENT_PORT_DISCONNECTED
+                override fun serialEvent(event: SerialPortEvent) {
+                    if (event.eventType == SerialPort.LISTENING_EVENT_PORT_DISCONNECTED &&
+                        disconnected.compareAndSet(false, true)
+                    ) {
+                        logger.debug("  $portName disconnect event")
+                        callback()
+                    }
+                }
+            })
+        }
+
         fun sendCommand(command: String): CommandResult {
             val request = normalizeUsbRequest(command)
             logger.debug("  $portName → ${request.trim()}")
@@ -163,6 +186,7 @@ internal class TabyUsbClient {
 
         override fun close() {
             logger.debug("  $portName closing session")
+            port.removeDataListener()
             port.closePort()
         }
     }
