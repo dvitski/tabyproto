@@ -1,6 +1,5 @@
 package cc.dvitski.tabyproto.desktop
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,10 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.Button
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Scaffold
@@ -26,17 +22,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.dvitski.tabyproto.Animation
-import cc.dvitski.tabyproto.Taby
-import cc.dvitski.tabyproto.TabySession
+import cc.dvitski.tabyproto.TabyDevice
+import cc.dvitski.tabyproto.TabyDeviceMonitor
 import cc.dvitski.tabyproto.TabyTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,22 +43,18 @@ import kotlinx.coroutines.launch
 private val AppBackground = Color(0xFF1E1E2E)
 private val MutedText = Color(0xFF9399B2)
 
-// ── Connection state ───────────────────────────────────────────────────────────
-
-sealed class ConnectionState {
-    object Connecting : ConnectionState()
-    data class Connected(val session: TabySession, val transport: TabyTransport) : ConnectionState()
-    data class Failed(val message: String) : ConnectionState()
-}
-
 // ── AppState ───────────────────────────────────────────────────────────────────
 
 class AppState {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val hostsStore = ManualHostsStore()
+    private val monitor = TabyDeviceMonitor(initialManualHosts = hostsStore.load())
 
-    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Connecting)
-    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+    val devices: StateFlow<List<TabyDevice>> = monitor.devices
+
+    private val _activeDeviceId = MutableStateFlow<String?>(null)
+    val activeDeviceId: StateFlow<String?> = _activeDeviceId.asStateFlow()
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
@@ -78,37 +68,45 @@ class AppState {
     val thumbnailCache: ThumbnailCache = ThumbnailCache()
     val totalAnimations: Int = Animation.entries.size
 
-    private var connectJob: Job? = null
-
     init {
-        connect()
+        monitor.start()
         thumbnailCache.preloadAll(Animation.entries)
         AnimationResources.preloadAll(Animation.entries, scope)
-    }
-
-    fun connect() {
-        connectJob?.cancel()
-        connectJob = scope.launch {
-            _connectionState.value = ConnectionState.Connecting
-            try {
-                val session = Taby.connect()
-                _connectionState.value = ConnectionState.Connected(session, session.transport)
-            } catch (e: Exception) {
-                _connectionState.value = ConnectionState.Failed(e.message ?: "Unknown error")
+        scope.launch { monitor.manualHosts.collect { hostsStore.save(it) } }
+        scope.launch {
+            monitor.devices.collect { list ->
+                // Auto-select the first device to come online (USB preferred);
+                // afterwards selection only changes by user action.
+                if (_activeDeviceId.value == null) {
+                    val candidate = list.filter { it.online }
+                        .minByOrNull { if (it.transport == TabyTransport.USB) 0 else 1 }
+                    if (candidate != null) _activeDeviceId.value = candidate.id
+                }
             }
         }
     }
+
+    fun selectDevice(id: String) {
+        _activeDeviceId.value = id
+    }
+
+    fun addManualHost(host: String) = monitor.addManualHost(host)
+
+    fun removeManualHost(host: String) = monitor.removeManualHost(host)
 
     fun setQuery(q: String) {
         _query.value = q
     }
 
     suspend fun sendAnimation(animation: Animation): Result<Unit> {
-        val state = _connectionState.value
-        if (state !is ConnectionState.Connected) return Result.failure(IllegalStateException("Not connected"))
+        val device = devices.value.firstOrNull { it.id == _activeDeviceId.value }
+            ?: return Result.failure(IllegalStateException("No Taby connected"))
+        if (!device.online) {
+            return Result.failure(IllegalStateException("${device.label} is offline"))
+        }
         _sendingAnimation.value = animation
         return try {
-            val result = state.session.play(animation)
+            val result = monitor.session(device).play(animation)
             if (result.ok) {
                 _lastSent.value = animation
                 Result.success(Unit)
@@ -124,10 +122,7 @@ class AppState {
 
     fun close() {
         scope.cancel()
-        val state = _connectionState.value
-        if (state is ConnectionState.Connected) {
-            state.session.close()
-        }
+        monitor.close()
     }
 }
 
@@ -135,7 +130,8 @@ class AppState {
 
 @Composable
 fun App(appState: AppState) {
-    val connectionState by appState.connectionState.collectAsState()
+    val devices by appState.devices.collectAsState()
+    val activeDeviceId by appState.activeDeviceId.collectAsState()
     val query by appState.query.collectAsState()
     val lastSent by appState.lastSent.collectAsState()
     val sendingAnimation by appState.sendingAnimation.collectAsState()
@@ -177,7 +173,7 @@ fun App(appState: AppState) {
                     .padding(paddingValues)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                // Top bar: query field + status indicator
+                // Top bar: query field + device selector
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -192,113 +188,47 @@ fun App(appState: AppState) {
 
                     Spacer(modifier = Modifier.width(16.dp))
 
-                    StatusIndicator(connectionState = connectionState, lastSent = lastSent)
-                }
-
-                // Main content area
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(top = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    when (val state = connectionState) {
-                        is ConnectionState.Connecting -> {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                CircularProgressIndicator(color = Color.White)
-                                Text("Connecting…", color = Color.White)
-                            }
-                        }
-
-                        is ConnectionState.Failed -> {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Text(
-                                    text = "Connection failed: ${state.message}",
-                                    color = Color(0xFFFF5555),
-                                )
-                                Button(onClick = appState::connect) {
-                                    Text("Reconnect")
-                                }
-                            }
-                        }
-
-                        is ConnectionState.Connected -> {
-                            val filtered = Animation.entries.filter { animation ->
-                                query.isBlank() || animation.id.contains(query, ignoreCase = true)
-                            }
-                            AnimationGrid(
-                                animations = filtered,
-                                thumbnailCache = appState.thumbnailCache,
-                                sendingAnimation = sendingAnimation,
-                                onSend = { animation ->
-                                    scope.launch {
-                                        val result = appState.sendAnimation(animation)
-                                        result.onFailure { e ->
-                                            snackbarHostState.showSnackbar(
-                                                message = e.message ?: "Send failed",
-                                            )
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize(),
+                    Column(horizontalAlignment = Alignment.End) {
+                        DeviceSelector(
+                            devices = devices,
+                            activeDeviceId = activeDeviceId,
+                            onSelect = appState::selectDevice,
+                            onAddHost = appState::addManualHost,
+                            onRemoveHost = appState::removeManualHost,
+                        )
+                        if (lastSent != null) {
+                            Text(
+                                text = "Last sent: ${lastSent?.id}",
+                                color = MutedText,
+                                fontSize = 10.sp,
                             )
                         }
                     }
                 }
-            }
-        }
-    }
-}
 
-// ── Status indicator ───────────────────────────────────────────────────────────
-
-@Composable
-private fun StatusIndicator(
-    connectionState: ConnectionState,
-    lastSent: Animation?,
-) {
-    val dotColor = when (connectionState) {
-        is ConnectionState.Connected -> Color(0xFF00C853)
-        is ConnectionState.Connecting -> Color(0xFFFFD600)
-        is ConnectionState.Failed -> Color(0xFFFF5555)
-    }
-
-    val transportLabel = when (connectionState) {
-        is ConnectionState.Connected -> when (connectionState.transport) {
-            TabyTransport.USB -> "USB"
-            TabyTransport.WIFI -> "WiFi"
-            TabyTransport.BLUETOOTH -> "Bluetooth"
-        }
-        is ConnectionState.Connecting -> "Connecting"
-        is ConnectionState.Failed -> "Disconnected"
-    }
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(dotColor),
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Column {
-            Text(
-                text = transportLabel,
-                color = Color.White,
-                fontSize = 12.sp,
-            )
-            if (lastSent != null) {
-                Text(
-                    text = "Last sent: ${lastSent.id}",
-                    color = MutedText,
-                    fontSize = 10.sp,
+                // Animation grid — always visible; sends fail with a snackbar
+                // when no device is connected.
+                val filtered = Animation.entries.filter { animation ->
+                    query.isBlank() || animation.id.contains(query, ignoreCase = true)
+                }
+                AnimationGrid(
+                    animations = filtered,
+                    thumbnailCache = appState.thumbnailCache,
+                    sendingAnimation = sendingAnimation,
+                    onSend = { animation ->
+                        scope.launch {
+                            val result = appState.sendAnimation(animation)
+                            result.onFailure { e ->
+                                snackbarHostState.showSnackbar(
+                                    message = e.message ?: "Send failed",
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(top = 8.dp),
                 )
             }
         }
