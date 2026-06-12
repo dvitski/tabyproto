@@ -56,11 +56,13 @@ class TabyDeviceMonitor internal constructor(
     val manualHosts: StateFlow<List<String>> = _manualHosts.asStateFlow()
 
     private val mdnsHosts = CopyOnWriteArraySet<String>()
+    // Confined to the USB poll coroutine — plain mutable set is safe (no cross-coroutine access).
     private val nonTabyPorts = mutableSetOf<String>()
 
-    private val sessions = mutableMapOf<String, TabySession>()
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, TabySession>()
     private val sessionMutex = Mutex()
 
+    @Volatile private var closed = false
     private var started = false
     private var mdnsBrowser: Closeable? = null
 
@@ -103,6 +105,7 @@ class TabyDeviceMonitor internal constructor(
     }
 
     override fun close() {
+        closed = true
         scope.cancel()
         runCatching { mdnsBrowser?.close() }
         sessions.values.forEach { runCatching { it.close() } }
@@ -111,15 +114,19 @@ class TabyDeviceMonitor internal constructor(
 
     // ── Manual hosts ───────────────────────────────────────────────────────────
 
+    private fun normalizeHost(host: String): String =
+        host.trim().removePrefix("http://").removeSuffix("/")
+
     fun addManualHost(host: String) {
-        val cleaned = host.trim().removePrefix("http://").removeSuffix("/")
+        val cleaned = normalizeHost(host)
         if (cleaned.isEmpty()) return
         _manualHosts.update { if (cleaned in it) it else it + cleaned }
     }
 
     /** The device entry disappears on the next WiFi poll (≤ [wifiPollInterval]). */
     fun removeManualHost(host: String) {
-        _manualHosts.update { it - host }
+        val cleaned = normalizeHost(host)
+        _manualHosts.update { it - cleaned }
     }
 
     internal fun onMdnsCandidate(host: String) {
@@ -235,11 +242,12 @@ class TabyDeviceMonitor internal constructor(
      * Throws [IllegalStateException] if the device is currently offline.
      * Sessions are owned by the monitor — do not close them.
      */
-    suspend fun session(device: TabyDevice): TabySession {
-        val current = devices.value.firstOrNull { it.id == device.id }
-        check(current != null && current.online) { "${device.label} is offline" }
-        val info = checkNotNull(current.info) { "No device info for ${device.label}" }
-        return sessionMutex.withLock {
+    suspend fun session(device: TabyDevice): TabySession =
+        sessionMutex.withLock {
+            check(!closed) { "monitor is closed" }
+            val current = devices.value.firstOrNull { it.id == device.id }
+            check(current != null && current.online) { "${device.label} is offline" }
+            val info = checkNotNull(current.info) { "No device info for ${device.label}" }
             sessions[device.id] ?: run {
                 val session = when (val src = current.source) {
                     is DeviceSource.Usb -> usbSessionFactory(src.portName, info)
@@ -249,7 +257,6 @@ class TabyDeviceMonitor internal constructor(
                 session
             }
         }
-    }
 
     private suspend fun evictSession(id: String) {
         sessionMutex.withLock {
