@@ -72,11 +72,15 @@ class AppState {
         monitor.start()
         thumbnailCache.preloadAll(Animation.entries)
         AnimationResources.preloadAll(Animation.entries, scope)
-        scope.launch { monitor.manualHosts.collect { hostsStore.save(it) } }
+        scope.launch(Dispatchers.IO) { monitor.manualHosts.collect { hostsStore.save(it) } }
         scope.launch {
             monitor.devices.collect { list ->
+                val activeId = _activeDeviceId.value
+                if (activeId != null && list.none { it.id == activeId }) {
+                    _activeDeviceId.value = null
+                }
                 // Auto-select the first device to come online (USB preferred);
-                // afterwards selection only changes by user action.
+                // afterwards selection only changes by user action or the device vanishing.
                 if (_activeDeviceId.value == null) {
                     val candidate = list.filter { it.online }
                         .minByOrNull { if (it.transport == TabyTransport.USB) 0 else 1 }
@@ -99,6 +103,9 @@ class AppState {
     }
 
     suspend fun sendAnimation(animation: Animation): Result<Unit> {
+        if (_sendingAnimation.value != null) {
+            return Result.failure(IllegalStateException("Still sending ${_sendingAnimation.value?.id}"))
+        }
         val device = devices.value.firstOrNull { it.id == _activeDeviceId.value }
             ?: return Result.failure(IllegalStateException("No Taby connected"))
         if (!device.online) {
