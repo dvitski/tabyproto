@@ -165,4 +165,80 @@ class TabyDeviceMonitorTest {
         assertTrue(h.device("usb:COM3")!!.online)
         assertEquals(listOf("COM3", "COM3"), h.probeCalls)
     }
+
+    // ── WiFi polling & manual hosts ────────────────────────────────────────────
+
+    @Test
+    fun `reachable manual host is registered online`() = runTest {
+        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        h.healthResults["192.168.1.50"] = fakeInfo("taby-w", mdnsHost = "taby.local")
+
+        h.monitor.pollWifiOnce()
+
+        val device = h.device("wifi:192.168.1.50")!!
+        assertTrue(device.online)
+        assertEquals(TabyTransport.WIFI, device.transport)
+        assertEquals("taby.local", device.label)
+        assertEquals(DeviceSource.Wifi("192.168.1.50", manual = true), device.source)
+    }
+
+    @Test
+    fun `unreachable manual host appears as offline entry and is retried`() = runTest {
+        val h = Harness(manualHosts = listOf("192.168.1.50"))
+
+        h.monitor.pollWifiOnce()
+        assertFalse(h.device("wifi:192.168.1.50")!!.online)
+
+        // Host comes up later → next poll flips it online.
+        h.healthResults["192.168.1.50"] = fakeInfo("taby-w")
+        h.monitor.pollWifiOnce()
+        assertTrue(h.device("wifi:192.168.1.50")!!.online)
+    }
+
+    @Test
+    fun `online wifi device flips offline when health check fails`() = runTest {
+        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        h.healthResults["192.168.1.50"] = fakeInfo("taby-w")
+        h.monitor.pollWifiOnce()
+
+        h.healthResults.clear()
+        h.monitor.pollWifiOnce()
+
+        assertFalse(h.device("wifi:192.168.1.50")!!.online)
+    }
+
+    @Test
+    fun `addManualHost normalizes and dedupes`() = runTest {
+        val h = Harness()
+        h.monitor.addManualHost(" http://taby.local/ ")
+        h.monitor.addManualHost("taby.local")
+        h.monitor.addManualHost("   ")
+
+        assertEquals(listOf("taby.local"), h.monitor.manualHosts.value)
+    }
+
+    @Test
+    fun `removed manual host disappears from devices on next poll`() = runTest {
+        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        h.healthResults["192.168.1.50"] = fakeInfo("taby-w")
+        h.monitor.pollWifiOnce()
+
+        h.monitor.removeManualHost("192.168.1.50")
+        h.monitor.pollWifiOnce()
+
+        assertNull(h.device("wifi:192.168.1.50"))
+    }
+
+    @Test
+    fun `mdns candidate host is polled and registered as non-manual`() = runTest {
+        val h = Harness()
+        h.monitor.onMdnsCandidate("192.168.1.77")
+        h.healthResults["192.168.1.77"] = fakeInfo("taby-m")
+
+        h.monitor.pollWifiOnce()
+
+        val device = h.device("wifi:192.168.1.77")!!
+        assertTrue(device.online)
+        assertEquals(DeviceSource.Wifi("192.168.1.77", manual = false), device.source)
+    }
 }
