@@ -35,7 +35,7 @@ import cc.dvitski.tabyproto.TabyTransport
 private val SidebarBg = Color(0xFF090914)
 private val AccentPurple = Color(0xFF7C3AED)
 private val LightPurple = Color(0xFFA78BFA)
-private val OnlineGreen = Color(0xFF22C55E)
+private val SidebarOnlineGreen = Color(0xFF22C55E)
 private val OfflineGrey = Color(0xFF6C7086)
 
 @Composable
@@ -140,8 +140,8 @@ private fun DevicePill(
             .padding(horizontal = 6.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
-            .background(Color(0xFF0E1A10))
-            .border(1.dp, OnlineGreen.copy(alpha = 0.27f), RoundedCornerShape(6.dp))
+            .background(if (online) Color(0xFF0E1A10) else Color(0xFF12121A))
+            .border(1.dp, if (online) SidebarOnlineGreen.copy(alpha = 0.27f) else OfflineGrey.copy(alpha = 0.27f), RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 6.dp, horizontal = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -155,7 +155,7 @@ private fun DevicePill(
                 Modifier
                     .size(5.dp)
                     .clip(CircleShape)
-                    .background(if (online) OnlineGreen else OfflineGrey),
+                    .background(if (online) SidebarOnlineGreen else OfflineGrey),
             )
             Text(
                 text = when (active?.transport) {
