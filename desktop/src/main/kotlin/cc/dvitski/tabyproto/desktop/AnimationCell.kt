@@ -82,8 +82,8 @@ fun AnimationCell(
         ) {
             val videoReady = hovered && playerState.isPlaying && !playerState.isLoading
             when {
-                videoReady -> VideoPlayerSurface(playerState = playerState, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                thumbnail != null -> Image(bitmap = thumbnail, contentDescription = animation.id, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                videoReady -> VideoPlayerSurface(playerState = playerState, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                thumbnail != null -> Image(bitmap = thumbnail, contentDescription = animation.id, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 else -> Text("…", color = theme.textSecondary, fontSize = 18.sp)
             }
 
