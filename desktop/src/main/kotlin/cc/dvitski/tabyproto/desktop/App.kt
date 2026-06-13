@@ -43,6 +43,17 @@ import kotlinx.coroutines.launch
 private val AppBackground = Color(0xFF1E1E2E)
 private val MutedText = Color(0xFF9399B2)
 
+// ── Routing types ──────────────────────────────────────────────────────────────
+
+sealed class Screen {
+    object Home : Screen()
+    data class Settings(val category: SettingsCategory = SettingsCategory.PlayAnimations) : Screen()
+}
+
+enum class SettingsCategory { PlayAnimations, Music, Voice, Device }
+
+enum class ListeningState { Idle, WakeWordDetected, Listening, Responding }
+
 // ── AppState ───────────────────────────────────────────────────────────────────
 
 class AppState {
@@ -67,6 +78,19 @@ class AppState {
 
     val thumbnailCache: ThumbnailCache = ThumbnailCache()
     val totalAnimations: Int = Animation.entries.size
+
+    private val _selectedScreen = MutableStateFlow<Screen>(Screen.Home)
+    val selectedScreen: StateFlow<Screen> = _selectedScreen.asStateFlow()
+
+    private val _voiceOverlayVisible = MutableStateFlow(false)
+    val voiceOverlayVisible: StateFlow<Boolean> = _voiceOverlayVisible.asStateFlow()
+
+    private val _listeningState = MutableStateFlow(ListeningState.Idle)
+    val listeningState: StateFlow<ListeningState> = _listeningState.asStateFlow()
+
+    fun navigate(screen: Screen) { _selectedScreen.value = screen }
+    fun showVoiceOverlay() { _voiceOverlayVisible.value = true }
+    fun hideVoiceOverlay() { _voiceOverlayVisible.value = false }
 
     init {
         monitor.start()
