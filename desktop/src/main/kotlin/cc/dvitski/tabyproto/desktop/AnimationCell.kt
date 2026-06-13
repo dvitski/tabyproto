@@ -11,7 +11,11 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -63,34 +68,58 @@ fun AnimationCell(
 
     Column(
         modifier = modifier
+            .clip(AppCardShape)
             .background(theme.surface)
-            .border(BorderStroke(if (hovered) 2.dp else 1.dp, if (hovered) theme.accent else theme.border))
+            .border(BorderStroke(if (hovered) 2.dp else 1.dp, if (hovered) theme.accent else theme.border), AppCardShape)
             .clickable(enabled = !isSending, onClick = onSend)
             .onPointerEvent(PointerEventType.Enter) { hovered = true }
             .onPointerEvent(PointerEventType.Exit) { hovered = false },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(AppCardShape),
+            contentAlignment = Alignment.Center,
+        ) {
             val videoReady = hovered && playerState.isPlaying && !playerState.isLoading
             when {
                 videoReady -> VideoPlayerSurface(playerState = playerState, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 thumbnail != null -> Image(bitmap = thumbnail, contentDescription = animation.id, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                else -> Text("…", color = theme.textSecondary, fontSize = 16.sp)
+                else -> Text("…", color = theme.textSecondary, fontSize = 18.sp)
             }
+
+            // Hover play overlay
+            if (hovered && !isSending) {
+                Box(
+                    Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(theme.accent.copy(alpha = 0.85f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(22.dp))
+                    }
+                }
+            }
+
             if (isSending) {
-                Box(Modifier.fillMaxSize().background(Color(0xAA000000)), contentAlignment = Alignment.Center) {
-                    Text("SENDING", color = theme.accent, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.50f)), contentAlignment = Alignment.Center) {
+                    Text("SENDING", color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 }
             }
         }
+
         Text(
             text = animation.id,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             color = theme.textPrimary,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
         )
     }
 }

@@ -13,7 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,17 +51,22 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PanelHeader(label: String) {
+private fun PanelHeader(label: String, icon: @Composable () -> Unit) {
     val theme = LocalAppTheme.current
-    Box(Modifier.fillMaxWidth().height(3.dp).background(theme.accent))
-    Text(
-        text = label,
-        color = theme.accent,
-        fontSize = 8.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 2.sp,
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .background(theme.accent)
     )
+    Row(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        icon()
+        Text(label, color = theme.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+    }
 }
 
 @Composable
@@ -70,26 +80,33 @@ private fun DevicePanel(
     val active = devices.firstOrNull { it.id == activeDeviceId }
     val online = active?.online == true
 
-    Column(modifier = modifier.background(theme.surface).border(2.dp, theme.border)) {
-        PanelHeader("DEVICE")
+    Column(
+        modifier = modifier
+            .clip(AppCardShape)
+            .background(theme.surface)
+            .border(1.dp, theme.border, AppCardShape),
+    ) {
+        PanelHeader("DEVICE") {
+            Icon(Icons.Rounded.Devices, contentDescription = null, tint = theme.accent, modifier = Modifier.size(15.dp))
+        }
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp).padding(bottom = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(if (online) theme.onlineGreen else theme.textSecondary))
+                Box(Modifier.size(9.dp).clip(CircleShape).background(if (online) theme.onlineGreen else theme.textSecondary))
                 Text(
                     text = if (active != null && online) "Connected · ${when (active.transport) {
                         TabyTransport.USB -> "USB"; TabyTransport.WIFI -> "WiFi"; TabyTransport.BLUETOOTH -> "BT"
                     }}" else "Disconnected",
                     color = theme.textPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("NOW PLAYING", color = theme.textSecondary, fontSize = 8.sp, letterSpacing = 1.sp)
-                Text(lastSent?.id ?: "—", color = theme.textPrimary, fontSize = 8.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("NOW PLAYING", color = theme.textSecondary, fontSize = 10.sp, letterSpacing = 0.5.sp)
+                Text(lastSent?.id ?: "—", color = theme.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -98,17 +115,31 @@ private fun DevicePanel(
 @Composable
 private fun MusicPanel(modifier: Modifier = Modifier) {
     val theme = LocalAppTheme.current
-    Column(modifier = modifier.background(theme.surface).border(2.dp, theme.border)) {
-        PanelHeader("MUSIC")
-        Text("Not configured", color = theme.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 14.dp))
+    Column(
+        modifier = modifier
+            .clip(AppCardShape)
+            .background(theme.surface)
+            .border(1.dp, theme.border, AppCardShape),
+    ) {
+        PanelHeader("MUSIC") {
+            Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = theme.accent, modifier = Modifier.size(15.dp))
+        }
+        Text("Not configured", color = theme.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
     }
 }
 
 @Composable
 private fun MobilePanel(modifier: Modifier = Modifier) {
     val theme = LocalAppTheme.current
-    Column(modifier = modifier.background(theme.surface).border(2.dp, theme.border)) {
-        PanelHeader("MOBILE")
-        Text("No device paired", color = theme.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 14.dp))
+    Column(
+        modifier = modifier
+            .clip(AppCardShape)
+            .background(theme.surface)
+            .border(1.dp, theme.border, AppCardShape),
+    ) {
+        PanelHeader("MOBILE") {
+            Icon(Icons.Rounded.PhoneAndroid, contentDescription = null, tint = theme.accent, modifier = Modifier.size(15.dp))
+        }
+        Text("No device paired", color = theme.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
     }
 }

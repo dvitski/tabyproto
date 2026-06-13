@@ -15,11 +15,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeviceHub
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,7 +50,7 @@ fun Sidebar(
 
     Column(
         modifier = modifier
-            .width(160.dp)
+            .width(168.dp)
             .fillMaxHeight()
             .background(theme.sidebarBg),
         horizontalAlignment = Alignment.Start,
@@ -51,97 +58,112 @@ fun Sidebar(
         Text(
             text = "TABYPROTO",
             color = theme.accent,
-            fontSize = 13.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp,
-            modifier = Modifier.padding(start = 14.dp, top = 16.dp, bottom = 12.dp),
+            modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 14.dp),
         )
         Box(Modifier.fillMaxWidth().height(1.dp).background(theme.sidebarText.copy(alpha = 0.12f)))
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
 
-        NavItem("⬡", "Home", selectedScreen == Screen.Home) { onNavigate(Screen.Home) }
-        NavItem("◈", "Settings", selectedScreen is Screen.Settings) { onNavigate(Screen.Settings()) }
+        NavItem(Icons.Rounded.Home, "Home", selectedScreen == Screen.Home) { onNavigate(Screen.Home) }
+        NavItem(Icons.Rounded.Settings, "Settings", selectedScreen is Screen.Settings) { onNavigate(Screen.Settings()) }
 
         Spacer(Modifier.weight(1f))
 
         val active = devices.firstOrNull { it.id == activeDeviceId }
         val online = active?.online == true
-        val blockBorder = theme.sidebarText.copy(alpha = 0.25f)
+        val blockBorder = theme.sidebarText.copy(alpha = 0.20f)
 
+        // Device block
         Column(
             modifier = Modifier
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 10.dp)
                 .fillMaxWidth()
-                .border(2.dp, blockBorder)
+                .clip(AppItemShape)
+                .border(1.dp, blockBorder, AppItemShape)
                 .clickable { onNavigate(Screen.Settings(SettingsCategory.Device)) }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("DEVICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 7.sp, letterSpacing = 1.sp)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Box(Modifier.size(5.dp).clip(CircleShape).background(if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.3f)))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Rounded.DeviceHub, contentDescription = null, tint = theme.sidebarText.copy(alpha = 0.4f), modifier = Modifier.size(13.dp))
+                Text("DEVICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 9.sp, letterSpacing = 1.sp)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.size(6.dp).clip(CircleShape).background(if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.3f)))
                 Text(
                     text = when (active?.transport) {
                         TabyTransport.USB -> "USB"; TabyTransport.WIFI -> "WiFi"; TabyTransport.BLUETOOTH -> "BT"; null -> "—"
                     },
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     color = if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.4f),
                 )
             }
             Text(
                 text = lastSent?.id ?: if (active != null) "connected" else "no device",
-                fontSize = 8.sp,
+                fontSize = 10.sp,
                 color = theme.sidebarText.copy(alpha = 0.3f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
 
+        // Voice block
         val voiceActive = listeningState != ListeningState.Idle
         Column(
             modifier = Modifier
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 10.dp)
                 .fillMaxWidth()
-                .border(2.dp, if (voiceActive) theme.accent else blockBorder)
+                .clip(AppItemShape)
+                .border(1.dp, if (voiceActive) theme.accent else blockBorder, AppItemShape)
                 .clickable(onClick = onVoiceClick)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("VOICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 7.sp, letterSpacing = 1.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Rounded.Mic, contentDescription = null,
+                    tint = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.4f),
+                    modifier = Modifier.size(13.dp))
+                Text("VOICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 9.sp, letterSpacing = 1.sp)
+            }
             Text(
                 text = when (listeningState) {
-                    ListeningState.Idle -> "READY"
-                    ListeningState.WakeWordDetected -> "WAKE WORD"
-                    ListeningState.Listening -> "LISTENING"
-                    ListeningState.Responding -> "RESPONDING"
+                    ListeningState.Idle -> "Ready"
+                    ListeningState.WakeWordDetected -> "Wake word"
+                    ListeningState.Listening -> "Listening…"
+                    ListeningState.Responding -> "Responding"
                 },
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
                 color = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.5f),
-                letterSpacing = 0.5.sp,
             )
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
     }
 }
 
 @Composable
-private fun NavItem(glyph: String, label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     val theme = LocalAppTheme.current
+    val bgColor = if (selected) theme.accent.copy(alpha = 0.18f) else theme.sidebarBg
+    val contentColor = if (selected) theme.accent else theme.sidebarText.copy(alpha = 0.65f)
+
     Row(
         modifier = Modifier
+            .padding(horizontal = 10.dp)
             .fillMaxWidth()
-            .background(if (selected) theme.accent else theme.sidebarBg)
+            .clip(AppItemShape)
+            .background(bgColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        val textColor = if (selected) theme.sidebarBg else theme.sidebarText.copy(alpha = 0.7f)
-        Text(glyph, fontSize = 12.sp, color = textColor)
-        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = textColor)
+        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(20.dp))
+        Text(label, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = contentColor)
     }
 }
