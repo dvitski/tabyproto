@@ -116,7 +116,7 @@ private fun CategoryItem(label: String, selected: Boolean, onClick: () -> Unit) 
             .clickable(onClick = onClick)
             .drawBehind {
                 if (selected) {
-                    drawRect(color = AccentPurple.copy(alpha = 0.1f))
+                    drawRect(color = AccentPurple.copy(alpha = 0.13f))
                     drawRect(
                         color = AccentPurple,
                         topLeft = Offset.Zero,
