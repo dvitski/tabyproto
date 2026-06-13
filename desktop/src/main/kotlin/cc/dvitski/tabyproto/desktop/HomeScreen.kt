@@ -87,12 +87,11 @@ private fun DevicePanel(
                         .background(if (online) Color(0xFF22C55E) else Color(0xFF6C7086)),
                 )
                 Text(
-                    text = if (online) {
-                        "Connected · ${when (active?.transport) {
+                    text = if (active != null && active.online) {
+                        "Connected · ${when (active.transport) {
                             TabyTransport.USB -> "USB"
                             TabyTransport.WIFI -> "WiFi"
                             TabyTransport.BLUETOOTH -> "BT"
-                            null -> "—"
                         }}"
                     } else "Disconnected",
                     color = Color(0xFFE2E8F0),
