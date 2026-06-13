@@ -13,7 +13,7 @@ fun main() = application {
             appState.close()
             exitApplication()
         },
-        title = "Taby Controller",
+        title = "TabyProto",
         state = rememberWindowState(width = 900.dp, height = 700.dp),
     ) {
         App(appState)

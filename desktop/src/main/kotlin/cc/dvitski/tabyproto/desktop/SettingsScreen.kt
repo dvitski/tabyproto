@@ -1,6 +1,7 @@
 package cc.dvitski.tabyproto.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,31 +11,28 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.OutlinedTextField
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.dvitski.tabyproto.Animation
 import cc.dvitski.tabyproto.TabyDevice
 
-private val SettingsBg = Color(0xFF0D0D1A)
-private val CategoryBg = Color(0xFF090914)
-private val AccentPurple = Color(0xFF7C3AED)
-private val LightPurple = Color(0xFFA78BFA)
-
 private val SettingsCategory.label: String
     get() = when (this) {
-        SettingsCategory.PlayAnimations -> "Play animations"
+        SettingsCategory.PlayAnimations -> "Play Animations"
         SettingsCategory.Music -> "Music"
         SettingsCategory.Voice -> "Voice"
         SettingsCategory.Device -> "Device"
+        SettingsCategory.Appearance -> "Appearance"
     }
 
 @Composable
@@ -52,57 +50,32 @@ fun SettingsScreen(
     onSelectDevice: (String) -> Unit,
     onAddHost: (String) -> Unit,
     onRemoveHost: (String) -> Unit,
+    isDark: Boolean,
+    currentPalette: ColorPalette,
+    onSetTheme: (Boolean, ColorPalette) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier.fillMaxSize().background(SettingsBg)) {
-        Column(
-            modifier = Modifier
-                .width(120.dp)
-                .fillMaxHeight()
-                .background(CategoryBg)
-                .padding(top = 16.dp),
-        ) {
+    val theme = LocalAppTheme.current
+    Row(modifier = modifier.fillMaxSize().background(theme.background)) {
+        Column(modifier = Modifier.width(160.dp).fillMaxHeight().background(theme.surface)) {
             Text(
                 text = "SETTINGS",
-                color = Color(0xFF444444),
+                color = theme.textSecondary,
                 fontSize = 7.sp,
                 letterSpacing = 1.sp,
-                modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
             )
             SettingsCategory.entries.forEach { category ->
-                CategoryItem(
-                    label = category.label,
-                    selected = category == selectedCategory,
-                    onClick = { onCategorySelect(category) },
-                )
+                CategoryItem(category.label, category == selectedCategory) { onCategorySelect(category) }
             }
         }
-
         Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(16.dp)) {
             when (selectedCategory) {
-                SettingsCategory.PlayAnimations -> PlayAnimationsDetail(
-                    animations = animations,
-                    query = query,
-                    onQueryChange = onQueryChange,
-                    thumbnailCache = thumbnailCache,
-                    sendingAnimation = sendingAnimation,
-                    onSend = onSend,
-                )
-                SettingsCategory.Music -> PlaceholderDetail(
-                    title = "Music",
-                    body = "Music integration coming soon.",
-                )
-                SettingsCategory.Voice -> PlaceholderDetail(
-                    title = "Voice",
-                    body = "Wake word and microphone settings coming soon.",
-                )
-                SettingsCategory.Device -> DeviceDetail(
-                    devices = devices,
-                    activeDeviceId = activeDeviceId,
-                    onSelect = onSelectDevice,
-                    onAddHost = onAddHost,
-                    onRemoveHost = onRemoveHost,
-                )
+                SettingsCategory.PlayAnimations -> PlayAnimationsDetail(animations, query, onQueryChange, thumbnailCache, sendingAnimation, onSend)
+                SettingsCategory.Music -> PlaceholderDetail("Music", "Music integration coming soon.")
+                SettingsCategory.Voice -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
+                SettingsCategory.Device -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost)
+                SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme)
             }
         }
     }
@@ -110,26 +83,19 @@ fun SettingsScreen(
 
 @Composable
 private fun CategoryItem(label: String, selected: Boolean, onClick: () -> Unit) {
+    val theme = LocalAppTheme.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .background(if (selected) theme.accent else theme.surface)
             .clickable(onClick = onClick)
-            .drawBehind {
-                if (selected) {
-                    drawRect(color = AccentPurple.copy(alpha = 0.13f))
-                    drawRect(
-                        color = AccentPurple,
-                        topLeft = Offset.Zero,
-                        size = Size(2.dp.toPx(), size.height),
-                    )
-                }
-            }
-            .padding(horizontal = 12.dp, vertical = 7.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Text(
             text = label,
             fontSize = 9.sp,
-            color = if (selected) LightPurple else Color(0xFF888888),
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) theme.background else theme.textSecondary,
         )
     }
 }
@@ -143,15 +109,23 @@ private fun PlayAnimationsDetail(
     sendingAnimation: Animation?,
     onSend: (Animation) -> Unit,
 ) {
+    val theme = LocalAppTheme.current
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Play animations", color = Color(0xFFE2E8F0), fontSize = 13.sp)
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            label = { Text("Filter animations") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Text("Play Animations", color = theme.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier.fillMaxWidth().border(2.dp, theme.border).background(theme.surface2)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = TextStyle(color = theme.textPrimary, fontSize = 11.sp),
+                cursorBrush = SolidColor(theme.accent),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (query.isEmpty()) Text("Filter animations…", color = theme.textSecondary, fontSize = 11.sp)
+        }
         AnimationGrid(
             animations = animations,
             thumbnailCache = thumbnailCache,
@@ -164,9 +138,10 @@ private fun PlayAnimationsDetail(
 
 @Composable
 private fun PlaceholderDetail(title: String, body: String) {
+    val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, color = Color(0xFFE2E8F0), fontSize = 13.sp)
-        Text(body, color = Color(0xFF555555), fontSize = 10.sp)
+        Text(title, color = theme.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(body, color = theme.textSecondary, fontSize = 11.sp)
     }
 }
 
@@ -178,14 +153,63 @@ private fun DeviceDetail(
     onAddHost: (String) -> Unit,
     onRemoveHost: (String) -> Unit,
 ) {
+    val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Device", color = Color(0xFFE2E8F0), fontSize = 13.sp)
-        DeviceSelector(
-            devices = devices,
-            activeDeviceId = activeDeviceId,
-            onSelect = onSelect,
-            onAddHost = onAddHost,
-            onRemoveHost = onRemoveHost,
-        )
+        Text("Device", color = theme.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        DeviceSelector(devices, activeDeviceId, onSelect, onAddHost, onRemoveHost)
     }
+}
+
+@Composable
+private fun AppearanceDetail(isDark: Boolean, currentPalette: ColorPalette, onSetTheme: (Boolean, ColorPalette) -> Unit) {
+    val theme = LocalAppTheme.current
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Text("Appearance", color = theme.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("MODE", color = theme.textSecondary, fontSize = 8.sp, letterSpacing = 1.sp)
+            Row {
+                ModeButton("LIGHT", !isDark, Modifier.weight(1f)) { onSetTheme(false, currentPalette) }
+                ModeButton("DARK", isDark, Modifier.weight(1f)) { onSetTheme(true, currentPalette) }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("PALETTE", color = theme.textSecondary, fontSize = 8.sp, letterSpacing = 1.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ColorPalette.entries.forEach { palette ->
+                    PaletteSwatch(palette, isDark, palette == currentPalette) { onSetTheme(isDark, palette) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModeButton(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val theme = LocalAppTheme.current
+    Box(
+        modifier = modifier
+            .border(2.dp, theme.border)
+            .background(if (selected) theme.accent else theme.surface)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+            color = if (selected) theme.background else theme.textSecondary)
+    }
+}
+
+@Composable
+private fun PaletteSwatch(palette: ColorPalette, isDark: Boolean, selected: Boolean, onClick: () -> Unit) {
+    val theme = LocalAppTheme.current
+    val color = if (isDark) palette.darkAccent else palette.lightAccent
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .border(if (selected) 3.dp else 2.dp, if (selected) theme.border else color)
+            .background(color)
+            .clickable(onClick = onClick),
+    )
 }
