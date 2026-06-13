@@ -1,17 +1,18 @@
 package cc.dvitski.tabyproto.desktop
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.OutlinedTextField
-import androidx.compose.material.Scaffold
 import androidx.compose.material.SnackbarHost
 import androidx.compose.material.SnackbarHostState
 import androidx.compose.material.Text
@@ -166,101 +167,96 @@ fun App(appState: AppState) {
     val lastSent by appState.lastSent.collectAsState()
     val sendingAnimation by appState.sendingAnimation.collectAsState()
     val loadedCount by appState.thumbnailCache.loadedCount.collectAsState()
+    val selectedScreen by appState.selectedScreen.collectAsState()
+    val voiceOverlayVisible by appState.voiceOverlayVisible.collectAsState()
+    val listeningState by appState.listeningState.collectAsState()
     val total = appState.totalAnimations
     val thumbnailsReady = loadedCount >= total
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    Scaffold(
-        backgroundColor = AppBackground,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { paddingValues ->
+    val onSend: (Animation) -> Unit = { animation ->
+        scope.launch {
+            val result = appState.sendAnimation(animation)
+            result.onFailure { e ->
+                snackbarHostState.showSnackbar(message = e.message ?: "Send failed")
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppBackground),
+    ) {
         if (!thumbnailsReady) {
-            // Splash loading screen
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentAlignment = Alignment.Center,
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    CircularProgressIndicator(color = Color.White)
-                    Text(
-                        text = "Loading animations… $loadedCount / $total",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                    )
-                }
+                CircularProgressIndicator(color = Color.White)
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "Loading animations… $loadedCount / $total",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                )
             }
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                // Top bar: query field + device selector
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = appState::setQuery,
-                        label = { Text("Filter animations") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(horizontalAlignment = Alignment.End) {
-                        DeviceSelector(
+            Row(modifier = Modifier.fillMaxSize()) {
+                Sidebar(
+                    selectedScreen = selectedScreen,
+                    devices = devices,
+                    activeDeviceId = activeDeviceId,
+                    lastSent = lastSent,
+                    listeningState = listeningState,
+                    onNavigate = appState::navigate,
+                    onVoiceClick = appState::showVoiceOverlay,
+                )
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    when (val screen = selectedScreen) {
+                        Screen.Home -> HomeScreen(
                             devices = devices,
                             activeDeviceId = activeDeviceId,
-                            onSelect = appState::selectDevice,
-                            onAddHost = appState::addManualHost,
-                            onRemoveHost = appState::removeManualHost,
+                            lastSent = lastSent,
                         )
-                        if (lastSent != null) {
-                            Text(
-                                text = "Last sent: ${lastSent?.id}",
-                                color = MutedText,
-                                fontSize = 10.sp,
+                        is Screen.Settings -> {
+                            val filtered = Animation.entries.filter { animation ->
+                                query.isBlank() || animation.id.contains(query, ignoreCase = true)
+                            }
+                            SettingsScreen(
+                                selectedCategory = screen.category,
+                                onCategorySelect = { appState.navigate(Screen.Settings(it)) },
+                                animations = filtered,
+                                query = query,
+                                onQueryChange = appState::setQuery,
+                                thumbnailCache = appState.thumbnailCache,
+                                sendingAnimation = sendingAnimation,
+                                onSend = onSend,
+                                devices = devices,
+                                activeDeviceId = activeDeviceId,
+                                onSelectDevice = appState::selectDevice,
+                                onAddHost = appState::addManualHost,
+                                onRemoveHost = appState::removeManualHost,
                             )
                         }
                     }
                 }
+            }
 
-                // Animation grid — always visible; sends fail with a snackbar
-                // when no device is connected.
-                val filtered = Animation.entries.filter { animation ->
-                    query.isBlank() || animation.id.contains(query, ignoreCase = true)
-                }
-                AnimationGrid(
-                    animations = filtered,
-                    thumbnailCache = appState.thumbnailCache,
-                    sendingAnimation = sendingAnimation,
-                    onSend = { animation ->
-                        scope.launch {
-                            val result = appState.sendAnimation(animation)
-                            result.onFailure { e ->
-                                snackbarHostState.showSnackbar(
-                                    message = e.message ?: "Send failed",
-                                )
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(top = 8.dp),
+            if (voiceOverlayVisible) {
+                VoiceOverlay(
+                    listeningState = listeningState,
+                    onDismiss = appState::hideVoiceOverlay,
                 )
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
