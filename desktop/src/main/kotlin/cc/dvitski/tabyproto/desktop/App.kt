@@ -8,10 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.SnackbarHost
 import androidx.compose.material.SnackbarHostState
@@ -42,7 +39,6 @@ import kotlinx.coroutines.launch
 // ── App background colour ──────────────────────────────────────────────────────
 
 private val AppBackground = Color(0xFF1E1E2E)
-private val MutedText = Color(0xFF9399B2)
 
 // ── Routing types ──────────────────────────────────────────────────────────────
 
@@ -176,11 +172,13 @@ fun App(appState: AppState) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    val onSend: (Animation) -> Unit = { animation ->
-        scope.launch {
-            val result = appState.sendAnimation(animation)
-            result.onFailure { e ->
-                snackbarHostState.showSnackbar(message = e.message ?: "Send failed")
+    val onSend: (Animation) -> Unit = remember(scope, snackbarHostState) {
+        { animation ->
+            scope.launch {
+                val result = appState.sendAnimation(animation)
+                result.onFailure { e ->
+                    snackbarHostState.showSnackbar(message = e.message ?: "Send failed")
+                }
             }
         }
     }
