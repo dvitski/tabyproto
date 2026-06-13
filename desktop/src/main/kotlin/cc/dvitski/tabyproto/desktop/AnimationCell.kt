@@ -75,8 +75,9 @@ fun AnimationCell(
             .onPointerEvent(PointerEventType.Exit) { hovered = false },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        val ratio = if (thumbnail != null) thumbnail.width.toFloat() / thumbnail.height.toFloat() else 1f
         Box(
-            modifier = Modifier.fillMaxWidth().aspectRatio(1f).clip(AppCardShape),
+            modifier = Modifier.fillMaxWidth().aspectRatio(ratio).clip(AppCardShape),
             contentAlignment = Alignment.Center,
         ) {
             val videoReady = hovered && playerState.isPlaying && !playerState.isLoading
