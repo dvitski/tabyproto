@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
@@ -32,7 +33,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,9 +55,8 @@ fun AnimationCell(
     val playerState = rememberVideoPlayerState()
 
     DisposableEffect(playerState) { onDispose { playerState.dispose() } }
-    LaunchedEffect(isSending) { if (isSending) hovered = false }
-    LaunchedEffect(hovered) {
-        if (hovered) {
+    LaunchedEffect(hovered, isSending) {
+        if (hovered && !isSending) {
             val path = AnimationResources.videoPath(animation.id) ?: return@LaunchedEffect
             playerState.loop = true
             playerState.openUri(path)
@@ -107,7 +106,7 @@ fun AnimationCell(
 
             if (isSending) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.50f)), contentAlignment = Alignment.Center) {
-                    Text("SENDING", color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    CircularProgressIndicator(color = theme.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
                 }
             }
         }
