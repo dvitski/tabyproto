@@ -18,7 +18,7 @@ class IdleScheduler(
     private val onRestoreBrightness: suspend () -> Unit,
     private val getSavedBrightness: () -> Int?,
 ) {
-    private companion object {
+    internal companion object {
         val IDLE_POOL = listOf(
             Animations.IDLE_01_LOOP,
             Animations.IDLE_02_LOOP,
@@ -37,34 +37,36 @@ class IdleScheduler(
 
     fun notifyActivity() {
         loopJob?.cancel()
-        scope.launch {
+        loopJob = scope.launch {
             onRestoreBrightness()
             onStopAnimation(AnimationPriority.IDLE)
+            runLoop()
         }
-        startLoop()
     }
 
     private fun startLoop() {
-        loopJob = scope.launch {
-            var elapsedSec = 0L
-            var lastAnim: Animation? = null
-            while (true) {
-                val s = settings.value
-                delay(s.variationIntervalSec * 1000L)
-                elapsedSec += s.variationIntervalSec
-                val pool = if (elapsedSec >= s.relaxedThresholdSec) RELAXED_POOL else IDLE_POOL
-                val candidates = pool.filter { it != lastAnim }
-                val next = candidates.randomOrNull() ?: pool.random()
-                lastAnim = next
-                onRequestAnimation(next, AnimationPriority.IDLE)
-                if (s.dimEnabled && elapsedSec >= s.dimDelayThresholdSec) {
-                    val saved = getSavedBrightness() ?: 100
-                    val progress = ((elapsedSec - s.dimDelayThresholdSec).toFloat() /
-                        s.dimDelayThresholdSec.toFloat()).coerceIn(0f, 1f)
-                    val dimmed = (saved - (saved - s.dimFloorPercent) * progress)
-                        .toInt().coerceAtLeast(s.dimFloorPercent)
-                    onOverrideBrightness(dimmed)
-                }
+        loopJob = scope.launch { runLoop() }
+    }
+
+    private suspend fun runLoop() {
+        var elapsedSec = 0L
+        var lastAnim: Animation? = null
+        while (true) {
+            val s = settings.value
+            delay(s.variationIntervalSec * 1000L)
+            elapsedSec += s.variationIntervalSec
+            val pool = if (elapsedSec >= s.relaxedThresholdSec) RELAXED_POOL else IDLE_POOL
+            val candidates = pool.filter { it != lastAnim }
+            val next = candidates.randomOrNull() ?: pool.random()
+            lastAnim = next
+            onRequestAnimation(next, AnimationPriority.IDLE)
+            if (s.dimEnabled && elapsedSec >= s.dimDelayThresholdSec) {
+                val saved = getSavedBrightness() ?: 100
+                val progress = ((elapsedSec - s.dimDelayThresholdSec).toFloat() /
+                    s.dimDelayThresholdSec.toFloat()).coerceIn(0f, 1f)
+                val dimmed = (saved - (saved - s.dimFloorPercent) * progress)
+                    .toInt().coerceAtLeast(s.dimFloorPercent)
+                onOverrideBrightness(dimmed)
             }
         }
     }

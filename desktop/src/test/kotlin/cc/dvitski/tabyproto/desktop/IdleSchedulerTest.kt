@@ -4,7 +4,6 @@ package cc.dvitski.tabyproto.desktop
 
 import cc.dvitski.tabyproto.Animation
 import cc.dvitski.tabyproto.AnimationPriority
-import cc.dvitski.tabyproto.Animations
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -14,13 +13,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class IdleSchedulerTest {
-
-    private val IDLE_POOL = listOf(
-        Animations.IDLE_01_LOOP, Animations.IDLE_02_LOOP, Animations.IDLE_VARIATION_LOOP,
-    )
-    private val RELAXED_POOL = listOf(
-        Animations.SLEEPING_LOOP, Animations.RELAXING_01_LOOP, Animations.RELAXING_COUCH_LOOP,
-    )
 
     @Test
     fun `requests idle animation after variationIntervalSec`() = runTest {
@@ -45,7 +37,7 @@ class IdleSchedulerTest {
         advanceTimeBy(60_001L)
 
         assertEquals(1, requested.size)
-        assertTrue(requested[0] in IDLE_POOL)
+        assertTrue(requested[0] in IdleScheduler.IDLE_POOL)
     }
 
     @Test
@@ -72,9 +64,9 @@ class IdleSchedulerTest {
 
         // ticks at 60s → idle pool, 120s → relaxed pool (120 >= 120), 180s → relaxed pool
         assertEquals(3, requested.size)
-        assertTrue(requested[0] in IDLE_POOL)
-        assertTrue(requested[1] in RELAXED_POOL)
-        assertTrue(requested[2] in RELAXED_POOL)
+        assertTrue(requested[0] in IdleScheduler.IDLE_POOL)
+        assertTrue(requested[1] in IdleScheduler.RELAXED_POOL)
+        assertTrue(requested[2] in IdleScheduler.RELAXED_POOL)
     }
 
     @Test
