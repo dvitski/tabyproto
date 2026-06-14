@@ -62,10 +62,11 @@ class IdleScheduler(
             onRequestAnimation(next, AnimationPriority.IDLE)
             if (s.dimEnabled && elapsedSec >= s.dimDelayThresholdSec) {
                 val saved = getSavedBrightness() ?: 100
+                val floor = s.dimFloorPercent.coerceAtMost(saved)
                 val progress = ((elapsedSec - s.dimDelayThresholdSec).toFloat() /
                     s.dimDelayThresholdSec.toFloat()).coerceIn(0f, 1f)
-                val dimmed = (saved - (saved - s.dimFloorPercent) * progress)
-                    .toInt().coerceAtLeast(s.dimFloorPercent)
+                val dimmed = (saved - (saved - floor) * progress)
+                    .toInt().coerceAtLeast(floor)
                 onOverrideBrightness(dimmed)
             }
         }
