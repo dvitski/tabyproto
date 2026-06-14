@@ -137,28 +137,24 @@ fun Sidebar(
                     color = if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.4f),
                 )
             }
-            Text(
-                text = lastSent?.id ?: if (active != null) "connected" else "no device",
-                fontSize = 10.sp,
-                color = theme.sidebarText.copy(alpha = 0.3f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (videoVisible) {
+                VideoPlayerSurface(
+                    playerState = playerState,
+                    modifier = Modifier.fillMaxWidth().clip(AppItemShape),
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                Text(
+                    text = lastSent?.id ?: if (active != null) "connected" else "no device",
+                    fontSize = 10.sp,
+                    color = theme.sidebarText.copy(alpha = 0.3f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         Spacer(Modifier.height(6.dp))
-
-        if (videoVisible) {
-            VideoPlayerSurface(
-                playerState = playerState,
-                modifier = Modifier
-                    .padding(horizontal = 10.dp)
-                    .fillMaxWidth()
-                    .clip(AppItemShape),
-                contentScale = ContentScale.Fit,
-            )
-            Spacer(Modifier.height(6.dp))
-        }
 
         // Voice block
         val voiceActive = listeningState != ListeningState.Idle
