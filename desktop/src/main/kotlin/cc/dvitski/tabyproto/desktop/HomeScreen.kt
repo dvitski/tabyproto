@@ -20,24 +20,15 @@ import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.dvitski.tabyproto.Animation
 import cc.dvitski.tabyproto.TabyDevice
 import cc.dvitski.tabyproto.TabyTransport
-import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
-import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 
 @Composable
 fun HomeScreen(
@@ -84,37 +75,6 @@ private fun DevicePanel(
     val active = devices.firstOrNull { it.id == activeDeviceId }
     val online = active?.online == true
 
-    val playerState = rememberVideoPlayerState()
-    var videoVisible by remember { mutableStateOf(false) }
-    var videoStarted by remember { mutableStateOf(false) }
-
-    DisposableEffect(playerState) { onDispose { playerState.dispose() } }
-
-    // videoPath() suspends on IO, so videoVisible=true and openUri happen after
-    // the surface is mounted on the next frame — avoiding a missing-surface race.
-    LaunchedEffect(lastSent) {
-        videoStarted = false
-        videoVisible = false
-        playerState.pause()
-        if (lastSent != null) {
-            val path = AnimationResources.videoPath(lastSent.id) ?: return@LaunchedEffect
-            videoVisible = true          // mount surface
-            playerState.loop = false
-            playerState.openUri(path)   // start after surface is in tree
-        }
-    }
-
-    // Detect natural completion (isPlaying goes true then back to false).
-    LaunchedEffect(playerState.isPlaying, playerState.isLoading) {
-        when {
-            playerState.isPlaying && !playerState.isLoading -> videoStarted = true
-            videoStarted && !playerState.isPlaying && !playerState.isLoading -> {
-                videoVisible = false
-                videoStarted = false
-            }
-        }
-    }
-
     Column(
         modifier = modifier
             .clip(AppCardShape)
@@ -140,20 +100,6 @@ private fun DevicePanel(
             )
         }
 
-        // Surface is always mounted when videoVisible so the player has a render
-        // target. We show it immediately; any brief blank frame before isPlaying
-        // is acceptable.
-        if (videoVisible) {
-            VideoPlayerSurface(
-                playerState = playerState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
-                contentScale = ContentScale.Fit,
-            )
-        }
     }
 }
 

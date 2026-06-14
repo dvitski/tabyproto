@@ -23,10 +23,17 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,6 +41,8 @@ import androidx.compose.ui.unit.sp
 import cc.dvitski.tabyproto.Animation
 import cc.dvitski.tabyproto.TabyDevice
 import cc.dvitski.tabyproto.TabyTransport
+import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
+import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 
 @Composable
 fun Sidebar(
@@ -47,6 +56,34 @@ fun Sidebar(
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
+
+    val playerState = rememberVideoPlayerState()
+    var videoVisible by remember { mutableStateOf(false) }
+    var videoStarted by remember { mutableStateOf(false) }
+
+    DisposableEffect(playerState) { onDispose { playerState.dispose() } }
+
+    LaunchedEffect(lastSent) {
+        videoStarted = false
+        videoVisible = false
+        playerState.pause()
+        if (lastSent != null) {
+            val path = AnimationResources.videoPath(lastSent.id) ?: return@LaunchedEffect
+            videoVisible = true
+            playerState.loop = false
+            playerState.openUri(path)
+        }
+    }
+
+    LaunchedEffect(playerState.isPlaying, playerState.isLoading) {
+        when {
+            playerState.isPlaying && !playerState.isLoading -> videoStarted = true
+            videoStarted && !playerState.isPlaying && !playerState.isLoading -> {
+                videoVisible = false
+                videoStarted = false
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -110,6 +147,18 @@ fun Sidebar(
         }
 
         Spacer(Modifier.height(6.dp))
+
+        if (videoVisible) {
+            VideoPlayerSurface(
+                playerState = playerState,
+                modifier = Modifier
+                    .padding(horizontal = 10.dp)
+                    .fillMaxWidth()
+                    .clip(AppItemShape),
+                contentScale = ContentScale.Fit,
+            )
+            Spacer(Modifier.height(6.dp))
+        }
 
         // Voice block
         val voiceActive = listeningState != ListeningState.Idle
