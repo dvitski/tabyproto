@@ -21,9 +21,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,17 +50,19 @@ fun HomeScreen(
     lastSent: Animation?,
     brightness: Int?,
     onBrightnessChange: (Int) -> Unit,
+    musicState: MusicState,
+    onMusicControl: (MediaControl) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
     Column(
-        modifier = modifier.fillMaxSize().background(theme.background).padding(16.dp),
+        modifier = modifier.fillMaxWidth().background(theme.background).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        DevicePanel(devices, activeDeviceId, lastSent, brightness, onBrightnessChange, Modifier.fillMaxWidth().weight(1.4f))
-        Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MusicPanel(Modifier.weight(1f).fillMaxHeight())
-            MobilePanel(Modifier.weight(1f).fillMaxHeight())
+        DevicePanel(devices, activeDeviceId, lastSent, brightness, onBrightnessChange, Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MusicPanel(musicState, onMusicControl, Modifier.weight(1f))
+            MobilePanel(Modifier.weight(1f))
         }
     }
 }
@@ -128,13 +139,77 @@ private fun DevicePanel(
 }
 
 @Composable
-private fun MusicPanel(modifier: Modifier = Modifier) {
+private fun MusicPanel(state: MusicState, onControl: (MediaControl) -> Unit, modifier: Modifier = Modifier) {
     val theme = LocalAppTheme.current
+    val accent = theme.accent
     Column(modifier = modifier.clip(AppCardShape).background(theme.surface).border(1.dp, theme.border, AppCardShape)) {
         PanelHeader("MUSIC") {
-            Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = theme.accent, modifier = Modifier.size(18.dp))
+            Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
         }
-        Text("Not configured", color = theme.textSecondary, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        when (state) {
+            MusicState.Idle -> {
+                Text(
+                    "No music playing",
+                    color = theme.textSecondary, fontSize = 15.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            is MusicState.Playing -> {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AlbumArtHome(uri = state.albumArtUri, accent = accent)
+                    Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp)) {
+                        val sourceName = when (state.source) { MusicSource.Spotify -> "Spotify"; MusicSource.Tidal -> "Tidal"; else -> "Music" }
+                        Text(sourceName, color = accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+                        Text(state.track ?: "Unknown", color = theme.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(state.artist ?: "", color = theme.textSecondary, fontSize = 13.sp,
+                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+                ) {
+                    androidx.compose.material.IconButton(onClick = { onControl(MediaControl.Prev) }) {
+                        Icon(Icons.Rounded.SkipPrevious, "Prev", tint = theme.textSecondary, modifier = Modifier.size(24.dp))
+                    }
+                    androidx.compose.material.IconButton(onClick = { onControl(MediaControl.PlayPause) }) {
+                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "PlayPause", tint = accent, modifier = Modifier.size(28.dp))
+                    }
+                    androidx.compose.material.IconButton(onClick = { onControl(MediaControl.Next) }) {
+                        Icon(Icons.Rounded.SkipNext, "Next", tint = theme.textSecondary, modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumArtHome(uri: String?, accent: androidx.compose.ui.graphics.Color) {
+    val theme = LocalAppTheme.current
+    Box(
+        modifier = Modifier.size(64.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(theme.textSecondary.copy(alpha = 0.08f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        var bitmap by remember(uri) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+        LaunchedEffect(uri) {
+            bitmap = null
+            if (uri != null) bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { java.io.File(uri.removePrefix("file://")).inputStream().buffered().use { androidx.compose.ui.res.loadImageBitmap(it) } }.getOrNull()
+            }
+        }
+        val bmp = bitmap
+        if (bmp != null) {
+            androidx.compose.foundation.Image(bmp, null, modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        } else {
+            Icon(Icons.Rounded.MusicNote, null, tint = accent.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+        }
     }
 }
 

@@ -24,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.dvitski.tabyproto.Animation
+import cc.dvitski.tabyproto.AnimationController
+import cc.dvitski.tabyproto.AnimationPriority
 import cc.dvitski.tabyproto.Animations
 import cc.dvitski.tabyproto.TabyDevice
 import cc.dvitski.tabyproto.TabyDeviceMonitor
@@ -38,6 +40,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
 
 sealed class Screen {
     object Home : Screen()
@@ -56,8 +59,11 @@ class AppState {
     private val hostsStore = ManualHostsStore()
     private val monitor = TabyDeviceMonitor(initialManualHosts = hostsStore.load())
     private val themeStore = ThemeStore()
+    private val musicMonitor = MusicMonitor(scope)
+    private val controllers = ConcurrentHashMap<String, AnimationController>()
 
     val devices: StateFlow<List<TabyDevice>> = monitor.devices
+    val musicState: StateFlow<MusicState> = musicMonitor.state
 
     private val _activeDeviceId = MutableStateFlow<String?>(null)
     val activeDeviceId: StateFlow<String?> = _activeDeviceId.asStateFlow()
@@ -119,11 +125,14 @@ class AppState {
 
     init {
         monitor.start()
+        musicMonitor.start()
         thumbnailCache.preloadAll(Animations.all)
         AnimationResources.preloadAll(Animations.all, scope)
         scope.launch(Dispatchers.IO) { monitor.manualHosts.collect { hostsStore.save(it) } }
         scope.launch {
             monitor.devices.collect { list ->
+                val onlineIds = list.filter { it.online }.map { it.id }.toSet()
+                controllers.keys.filter { it !in onlineIds }.forEach { controllers.remove(it) }
                 val activeId = _activeDeviceId.value
                 if (activeId != null && list.none { it.id == activeId }) _activeDeviceId.value = null
                 if (_activeDeviceId.value == null) {
@@ -137,6 +146,55 @@ class AppState {
             _activeDeviceId.collect { id ->
                 val polled = devices.value.firstOrNull { it.id == id }?.info?.brightnessPercent
                 if (_brightness.value == null) _brightness.value = polled
+            }
+        }
+        scope.launch {
+            musicMonitor.state.collect { state ->
+                val id = _activeDeviceId.value ?: return@collect
+                val device = devices.value.firstOrNull { it.id == id && it.online } ?: return@collect
+                when (state) {
+                    MusicState.Idle -> {
+                        controller(device).cancel(AnimationPriority.MUSIC)
+                        controller(device).stop(AnimationPriority.MUSIC)
+                        controller(device).request(
+                            priority   = AnimationPriority.IDLE,
+                            animation  = Animations.IDLE_01_LOOP,
+                            durationMs = null,
+                            preempt    = false,
+                        )
+                    }
+                    is MusicState.Playing -> if (state.isPlaying) {
+                        controller(device).request(
+                            priority   = AnimationPriority.MUSIC,
+                            animation  = Animations.LISTENING_MUSIC_LOOP,
+                            durationMs = null,
+                            preempt    = true,
+                        )
+                    } else {
+                        controller(device).cancel(AnimationPriority.MUSIC)
+                        controller(device).stop(AnimationPriority.MUSIC)
+                        controller(device).request(
+                            priority   = AnimationPriority.IDLE,
+                            animation  = Animations.IDLE_01_LOOP,
+                            durationMs = null,
+                            preempt    = false,
+                        )
+                    }
+                }
+            }
+        }
+        scope.launch {
+            while (true) {
+                delay(2_000)
+                if ((musicMonitor.state.value as? MusicState.Playing)?.isPlaying != true) continue
+                val id = _activeDeviceId.value ?: continue
+                val device = devices.value.firstOrNull { it.id == id && it.online } ?: continue
+                controller(device).request(
+                    priority   = AnimationPriority.MUSIC,
+                    animation  = Animations.LISTENING_MUSIC_LOOP,
+                    durationMs = null,
+                    preempt    = true,
+                )
             }
         }
     }
@@ -155,14 +213,31 @@ class AppState {
             return Result.failure(IllegalStateException("Still sending ${_sendingAnimation.value?.id ?: "an animation"}"))
         }
         return try {
-            val result = monitor.session(device).play(animation)
-            if (result.ok) { _lastSent.value = animation; Result.success(Unit) }
-            else Result.failure(RuntimeException(result.message))
+            val introOrBody = when (animation) {
+                is Animation.Once    -> animation.raw
+                is Animation.Looping -> animation.intro ?: animation.body
+            }
+            controller(device).request(
+                priority  = AnimationPriority.MANUAL,
+                animation = animation,
+                durationMs = AnimationResources.durations[introOrBody],
+                preempt   = true,
+            )
+            _lastSent.value = animation
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
             _sendingAnimation.value = null
         }
+    }
+
+    fun sendMusicControl(control: MediaControl) = musicMonitor.sendControl(control)
+
+    private suspend fun controller(device: TabyDevice): AnimationController {
+        controllers[device.id]?.let { return it }
+        return AnimationController(monitor.session(device), scope)
+            .also { controllers[device.id] = it }
     }
 
     fun close() { scope.cancel(); monitor.close() }
@@ -186,6 +261,7 @@ fun App(appState: AppState) {
         val voiceOverlayVisible by appState.voiceOverlayVisible.collectAsState()
         val listeningState by appState.listeningState.collectAsState()
         val brightness by appState.brightness.collectAsState()
+        val musicState by appState.musicState.collectAsState()
         val total = appState.totalAnimations
         val thumbnailsReady = loadedCount >= total
         val snackbarHostState = remember { SnackbarHostState() }
@@ -224,10 +300,12 @@ fun App(appState: AppState) {
                         activeDeviceId = activeDeviceId,
                         lastSent = lastSent,
                         listeningState = listeningState,
+                        musicState = musicState,
                         brightness = brightness,
                         onBrightnessChange = appState::setBrightness,
                         onNavigate = appState::navigate,
                         onVoiceClick = appState::showVoiceOverlay,
+                        onMusicControl = appState::sendMusicControl,
                     )
                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                         when (val screen = selectedScreen) {
@@ -237,6 +315,8 @@ fun App(appState: AppState) {
                                 lastSent = lastSent,
                                 brightness = brightness,
                                 onBrightnessChange = appState::setBrightness,
+                                musicState = musicState,
+                                onMusicControl = appState::sendMusicControl,
                             )
                             is Screen.Settings -> {
                                 val filtered = Animations.all.filter { animation ->
@@ -269,6 +349,8 @@ fun App(appState: AppState) {
                                     onSetTheme = appState::setTheme,
                                     brightness = brightness,
                                     onBrightnessChange = appState::setBrightness,
+                                    musicState = musicState,
+                                    onMusicControl = appState::sendMusicControl,
                                 )
                             }
                         }

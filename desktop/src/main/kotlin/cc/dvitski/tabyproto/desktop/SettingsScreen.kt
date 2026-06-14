@@ -21,12 +21,21 @@ import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Brightness6
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +78,8 @@ fun SettingsScreen(
     onSetTheme: (Boolean, ColorPalette) -> Unit,
     brightness: Int?,
     onBrightnessChange: (Int) -> Unit,
+    musicState: MusicState,
+    onMusicControl: (MediaControl) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
@@ -90,7 +101,7 @@ fun SettingsScreen(
         Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(20.dp)) {
             when (selectedCategory) {
                 SettingsCategory.PlayAnimations -> PlayAnimationsDetail(animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend)
-                SettingsCategory.Music -> PlaceholderDetail("Music", "Music integration coming soon.")
+                SettingsCategory.Music -> MusicDetail(musicState, onMusicControl)
                 SettingsCategory.Voice -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
                 SettingsCategory.Device -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange)
                 SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme)
@@ -200,6 +211,68 @@ private fun TypeFilterChip(
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = if (selected) theme.accent else theme.textSecondary,
         )
+    }
+}
+
+@Composable
+private fun MusicDetail(state: MusicState, onControl: (MediaControl) -> Unit) {
+    val theme = LocalAppTheme.current
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Text("Music", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        when (state) {
+            MusicState.Idle -> Text("No music playing", color = theme.textSecondary, fontSize = 15.sp)
+            is MusicState.Playing -> {
+                val accent = theme.accent
+                val sourceName = when (state.source) { MusicSource.Spotify -> "Spotify"; MusicSource.Tidal -> "Tidal"; else -> "Music" }
+                Text(sourceName, color = accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MusicDetailAlbumArt(uri = state.albumArtUri, accent = accent)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(state.track ?: "Unknown", color = theme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(state.artist ?: "", color = theme.textSecondary, fontSize = 15.sp,
+                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material.IconButton(onClick = { onControl(MediaControl.Prev) }) {
+                        Icon(Icons.Rounded.SkipPrevious, "Prev", tint = theme.textSecondary, modifier = Modifier.size(28.dp))
+                    }
+                    androidx.compose.material.IconButton(onClick = { onControl(MediaControl.PlayPause) }) {
+                        Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "PlayPause", tint = accent, modifier = Modifier.size(32.dp))
+                    }
+                    androidx.compose.material.IconButton(onClick = { onControl(MediaControl.Next) }) {
+                        Icon(Icons.Rounded.SkipNext, "Next", tint = theme.textSecondary, modifier = Modifier.size(28.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MusicDetailAlbumArt(uri: String?, accent: androidx.compose.ui.graphics.Color) {
+    val theme = LocalAppTheme.current
+    Box(
+        modifier = Modifier.size(96.dp).clip(AppItemShape).background(theme.textSecondary.copy(alpha = 0.08f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        var bitmap by remember(uri) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+        LaunchedEffect(uri) {
+            bitmap = null
+            if (uri != null) bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { java.io.File(uri.removePrefix("file://")).inputStream().buffered().use { androidx.compose.ui.res.loadImageBitmap(it) } }.getOrNull()
+            }
+        }
+        val bmp = bitmap
+        if (bmp != null) {
+            androidx.compose.foundation.Image(bmp, null, modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        } else {
+            Icon(Icons.Rounded.MusicNote, null, tint = accent.copy(alpha = 0.5f), modifier = Modifier.size(40.dp))
+        }
     }
 }
 

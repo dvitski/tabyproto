@@ -43,19 +43,19 @@ fun buildTheme(isDark: Boolean, palette: ColorPalette): AppTheme {
     return if (isDark) {
         AppTheme(
             isDark = true, palette = palette,
-            background = Color(0xFF28231E), surface = Color(0xFF332C28), surface2 = Color(0xFF3E3730),
-            border = Color(0xFF5A5248),
-            textPrimary = Color(0xFFEDE8E0), textSecondary = Color(0xFF7A7268),
-            sidebarBg = Color(0xFF1E1A16), sidebarText = Color(0xFFEDE8E0),
+            background = Color(0xFF1E2124), surface = Color(0xFF282C30), surface2 = Color(0xFF32373C),
+            border = Color(0xFF484E54),
+            textPrimary = Color(0xFFE4E8EC), textSecondary = Color(0xFF78828C),
+            sidebarBg = Color(0xFF14171A), sidebarText = Color(0xFFE4E8EC),
             accent = accent, onlineGreen = Color(0xFF80C8A0),
         )
     } else {
         AppTheme(
             isDark = false, palette = palette,
-            background = Color(0xFFF8F4EF), surface = Color(0xFFEDE8E0), surface2 = Color(0xFFE2DCD4),
-            border = Color(0xFFC8BEB4),
-            textPrimary = Color(0xFF2C2420), textSecondary = Color(0xFF8C8078),
-            sidebarBg = Color(0xFF3A3028), sidebarText = Color(0xFFF8F4EF),
+            background = Color(0xFFF4F5F7), surface = Color(0xFFE8EAED), surface2 = Color(0xFFD8DCE0),
+            border = Color(0xFFBCC2C8),
+            textPrimary = Color(0xFF202428), textSecondary = Color(0xFF868E96),
+            sidebarBg = Color(0xFF2C3038), sidebarText = Color(0xFFF4F5F7),
             accent = accent, onlineGreen = Color(0xFF387858),
         )
     }

@@ -146,7 +146,8 @@ Slide-in/out transition when music starts or stops.
   controller.request(
       priority = AnimationPriority.MANUAL,
       animation = animation,
-      durationMs = AnimationResources.durations[animation.primaryRaw],
+      durationMs = AnimationResources.durations[animation.introOrBody],
+      // introOrBody: Animation.Once → raw; Animation.Looping → intro ?: body
       preempt = true,
   )
   ```
