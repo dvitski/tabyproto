@@ -48,34 +48,38 @@ object Animations {
 
     // ── Looping (no intro) ─────────────────────────────────────────────────────
 
-    val ANGRY_01_LOOP              = Animation.Looping("angry_01_loop",              "Angry 01 Loop",              intro = null, body = RawAnimation.ANGRY_01_LOOP)
-    val ANGRY_02_LOOP              = Animation.Looping("angry_02_loop",              "Angry 02 Loop",              intro = null, body = RawAnimation.ANGRY_02_LOOP)
-    val BUSY_LOOP                  = Animation.Looping("busy_loop",                  "Busy Loop",                  intro = null, body = RawAnimation.BUSY_LOOP)
-    val CREATING_TASK_LOOP         = Animation.Looping("creating_task_loop",         "Creating Task Loop",         intro = null, body = RawAnimation.CREATING_TASK_LOOP)
-    val DIZZY_LOOP                 = Animation.Looping("dizzy_loop",                 "Dizzy Loop",                 intro = null, body = RawAnimation.DIZZY_LOOP)
-    val IDLE_01_LOOP               = Animation.Looping("idle_01_loop",               "Idle 01 Loop",               intro = null, body = RawAnimation.IDLE_01_LOOP)
-    val IDLE_02_LOOP               = Animation.Looping("idle_02_loop",               "Idle 02 Loop",               intro = null, body = RawAnimation.IDLE_02_LOOP)
-    val IDLE_VARIATION_LOOP        = Animation.Looping("idle_variation_loop",        "Idle Variation Loop",        intro = null, body = RawAnimation.IDLE_VARIATION_LOOP)
-    val LISTENING_MUSIC_LOOP       = Animation.Looping("listening_music_loop",       "Listening Music Loop",       intro = null, body = RawAnimation.LISTENING_MUSIC_LOOP)
-    val RELAXING_01_LOOP           = Animation.Looping("relaxing_01_loop",           "Relaxing 01 Loop",           intro = null, body = RawAnimation.RELAXING_01_LOOP)
-    val SLEEPING_LOOP              = Animation.Looping("sleeping_loop",              "Sleeping Loop",              intro = null, body = RawAnimation.SLEEPING_LOOP)
-    val TALKING_DEFAULT_LOOP       = Animation.Looping("talking_default_loop",       "Talking Default Loop",       intro = null, body = RawAnimation.TALKING_DEFAULT_LOOP)
-    val TALKING_MAN_LOOP           = Animation.Looping("talking_man_loop",           "Talking Man Loop",           intro = null, body = RawAnimation.TALKING_MAN_LOOP)
-    val WORKING_LAPTOP_BORED_LOOP  = Animation.Looping("working_laptop_bored_loop",  "Working Laptop Bored Loop",  intro = null, body = RawAnimation.WORKING_LAPTOP_BORED_LOOP)
-    val WORKING_LAPTOP_EXCITED_LOOP= Animation.Looping("working_laptop_excited_loop","Working Laptop Excited Loop",intro = null, body = RawAnimation.WORKING_LAPTOP_EXCITED_LOOP)
-    val WORKING_LAPTOP_NORMAL_LOOP = Animation.Looping("working_laptop_normal_loop", "Working Laptop Normal Loop", intro = null, body = RawAnimation.WORKING_LAPTOP_NORMAL_LOOP)
+    val ANGRY_01_LOOP              = Animation.Looping("angry_01_loop",              "Angry 01",              intro = null, body = RawAnimation.ANGRY_01_LOOP)
+    val ANGRY_02_LOOP              = Animation.Looping("angry_02_loop",              "Angry 02",              intro = null, body = RawAnimation.ANGRY_02_LOOP)
+    val BUSY_LOOP                  = Animation.Looping("busy_loop",                  "Busy",                  intro = null, body = RawAnimation.BUSY_LOOP)
+    val CREATING_TASK_LOOP         = Animation.Looping("creating_task_loop",         "Creating Task",         intro = null, body = RawAnimation.CREATING_TASK_LOOP)
+    val DIZZY_LOOP                 = Animation.Looping("dizzy_loop",                 "Dizzy",                 intro = null, body = RawAnimation.DIZZY_LOOP)
+    val IDLE_01_LOOP               = Animation.Looping("idle_01_loop",               "Idle 01",               intro = null, body = RawAnimation.IDLE_01_LOOP)
+    val IDLE_02_LOOP               = Animation.Looping("idle_02_loop",               "Idle 02",               intro = null, body = RawAnimation.IDLE_02_LOOP)
+    val IDLE_VARIATION_LOOP        = Animation.Looping("idle_variation_loop",        "Idle Variation",        intro = null, body = RawAnimation.IDLE_VARIATION_LOOP)
+    val LISTENING_MUSIC_LOOP       = Animation.Looping("listening_music_loop",       "Listening Music",       intro = null, body = RawAnimation.LISTENING_MUSIC_LOOP)
+    val RELAXING_01_LOOP           = Animation.Looping("relaxing_01_loop",           "Relaxing 01",           intro = null, body = RawAnimation.RELAXING_01_LOOP)
+    val SLEEPING_LOOP              = Animation.Looping("sleeping_loop",              "Sleeping",              intro = null, body = RawAnimation.SLEEPING_LOOP)
+    val TALKING_DEFAULT_LOOP       = Animation.Looping("talking_default_loop",       "Talking Default",       intro = null, body = RawAnimation.TALKING_DEFAULT_LOOP)
+    val TALKING_MAN_LOOP           = Animation.Looping("talking_man_loop",           "Talking Man",           intro = null, body = RawAnimation.TALKING_MAN_LOOP)
+    val WORKING_LAPTOP_BORED_LOOP  = Animation.Looping("working_laptop_bored_loop",  "Working Laptop Bored",  intro = null, body = RawAnimation.WORKING_LAPTOP_BORED_LOOP)
+    val WORKING_LAPTOP_EXCITED_LOOP= Animation.Looping("working_laptop_excited_loop","Working Laptop Excited",intro = null, body = RawAnimation.WORKING_LAPTOP_EXCITED_LOOP)
+    val WORKING_LAPTOP_NORMAL_LOOP = Animation.Looping("working_laptop_normal_loop", "Working Laptop Normal", intro = null, body = RawAnimation.WORKING_LAPTOP_NORMAL_LOOP)
 
     // ── Looping (with intro) ───────────────────────────────────────────────────
 
-    val CALENDAR_LOOP            = Animation.Looping("calendar_loop",            "Calendar Loop",            intro = RawAnimation.CALENDAR_IN,           body = RawAnimation.CALENDAR_LOOP)
-    val CLAUDE_LOOP              = Animation.Looping("claude_loop",              "Claude Loop",              intro = RawAnimation.CLAUDE_IN,             body = RawAnimation.CLAUDE_LOOP)
-    val CODEX_LOOP               = Animation.Looping("codex_loop",              "Codex Loop",               intro = RawAnimation.CODEX_IN,              body = RawAnimation.CODEX_LOOP)
-    val LISTENING_LOOP           = Animation.Looping("listening_loop",           "Listening Loop",           intro = RawAnimation.LISTENING_IN,          body = RawAnimation.LISTENING_LOOP)
-    val RELAXING_COUCH_LOOP      = Animation.Looping("relaxing_couch_loop",      "Relaxing Couch Loop",      intro = RawAnimation.RELAXING_COUCH_IN,     body = RawAnimation.RELAXING_COUCH_LOOP)
-    val TABY_RESPONSE_READY_LOOP = Animation.Looping("taby_response_ready_loop", "Taby Response Ready Loop", intro = RawAnimation.TABY_RESPONSE_READY_IN,body = RawAnimation.TABY_RESPONSE_READY_LOOP)
-    val WORKING_LOOP             = Animation.Looping("working_loop",             "Working Loop",             intro = RawAnimation.WORKING_IN,            body = RawAnimation.WORKING_LOOP)
-    val WORKING_LAPTOP_LOOP      = Animation.Looping("working_laptop_loop",      "Working Laptop Loop",      intro = RawAnimation.WORKING_LAPTOP_IN,     body = RawAnimation.WORKING_LAPTOP_LOOP)
-    val WORKSPACES_LOOP          = Animation.Looping("workspaces_loop",          "Folders Loop",             intro = RawAnimation.WORKSPACES_IN,         body = RawAnimation.WORKSPACES_LOOP)
+    val CALENDAR_LOOP            = Animation.Looping("calendar_loop",            "Calendar",            intro = RawAnimation.CALENDAR_IN,       body = RawAnimation.CALENDAR_LOOP)
+    val CLAUDE_LOOP              = Animation.Looping("claude_loop",              "Claude",              intro = RawAnimation.CLAUDE_IN,         body = RawAnimation.CLAUDE_LOOP)
+    val CODEX_LOOP               = Animation.Looping("codex_loop",              "Codex",               intro = RawAnimation.CODEX_IN,          body = RawAnimation.CODEX_LOOP)
+    val LISTENING_LOOP           = Animation.Looping("listening_loop",           "Listening",           intro = RawAnimation.LISTENING_IN,      body = RawAnimation.LISTENING_LOOP)
+    val RELAXING_COUCH_LOOP      = Animation.Looping("relaxing_couch_loop",      "Relaxing Couch",      intro = RawAnimation.RELAXING_COUCH_IN, body = RawAnimation.RELAXING_COUCH_LOOP)
+    val WORKING_LOOP             = Animation.Looping("working_loop",             "Working",             intro = RawAnimation.WORKING_IN,        body = RawAnimation.WORKING_LOOP)
+    val WORKING_LAPTOP_LOOP      = Animation.Looping("working_laptop_loop",      "Working Laptop",      intro = RawAnimation.WORKING_LAPTOP_IN, body = RawAnimation.WORKING_LAPTOP_LOOP)
+    val WORKSPACES_LOOP          = Animation.Looping("workspaces_loop",          "Folders",             intro = RawAnimation.WORKSPACES_IN,     body = RawAnimation.WORKSPACES_LOOP)
+
+    // ── Unsupported as intro+loop on current device — registered separately ───
+
+    val TABY_RESPONSE_READY_IN   = Animation.Once("taby_response_ready_in",   "Taby Response Ready In",   RawAnimation.TABY_RESPONSE_READY_IN)
+    val TABY_RESPONSE_READY_LOOP = Animation.Looping("taby_response_ready_loop", "Taby Response Ready", intro = null, body = RawAnimation.TABY_RESPONSE_READY_LOOP)
 
     // ── Registry ───────────────────────────────────────────────────────────────
 
@@ -92,7 +96,8 @@ object Animations {
         RELAXING_01_LOOP, SLEEPING_LOOP, TALKING_DEFAULT_LOOP, TALKING_MAN_LOOP,
         WORKING_LAPTOP_BORED_LOOP, WORKING_LAPTOP_EXCITED_LOOP, WORKING_LAPTOP_NORMAL_LOOP,
         CALENDAR_LOOP, CLAUDE_LOOP, CODEX_LOOP, LISTENING_LOOP, RELAXING_COUCH_LOOP,
-        TABY_RESPONSE_READY_LOOP, WORKING_LOOP, WORKING_LAPTOP_LOOP, WORKSPACES_LOOP,
+        WORKING_LOOP, WORKING_LAPTOP_LOOP, WORKSPACES_LOOP,
+        TABY_RESPONSE_READY_IN, TABY_RESPONSE_READY_LOOP,
     )
 
     private val byIdMap: Map<String, Animation> = all.associateBy { it.id }
