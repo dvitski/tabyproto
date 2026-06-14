@@ -90,24 +90,28 @@ private fun DevicePanel(
 
     DisposableEffect(playerState) { onDispose { playerState.dispose() } }
 
+    // videoPath() suspends on IO, so videoVisible=true and openUri happen after
+    // the surface is mounted on the next frame — avoiding a missing-surface race.
     LaunchedEffect(lastSent) {
-        videoVisible = false
         videoStarted = false
+        videoVisible = false
         playerState.pause()
         if (lastSent != null) {
             val path = AnimationResources.videoPath(lastSent.id) ?: return@LaunchedEffect
+            videoVisible = true          // mount surface
             playerState.loop = false
-            playerState.openUri(path)
-            videoVisible = true
+            playerState.openUri(path)   // start after surface is in tree
         }
     }
 
-    LaunchedEffect(playerState.isPlaying) {
-        if (playerState.isPlaying) {
-            videoStarted = true
-        } else if (videoStarted && !playerState.isLoading) {
-            videoVisible = false
-            videoStarted = false
+    // Detect natural completion (isPlaying goes true then back to false).
+    LaunchedEffect(playerState.isPlaying, playerState.isLoading) {
+        when {
+            playerState.isPlaying && !playerState.isLoading -> videoStarted = true
+            videoStarted && !playerState.isPlaying && !playerState.isLoading -> {
+                videoVisible = false
+                videoStarted = false
+            }
         }
     }
 
@@ -136,7 +140,10 @@ private fun DevicePanel(
             )
         }
 
-        if (videoVisible && playerState.isPlaying && !playerState.isLoading) {
+        // Surface is always mounted when videoVisible so the player has a render
+        // target. We show it immediately; any brief blank frame before isPlaying
+        // is acceptable.
+        if (videoVisible) {
             VideoPlayerSurface(
                 playerState = playerState,
                 modifier = Modifier
