@@ -18,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap
 class ThumbnailCache {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
     private val cache = ConcurrentHashMap<Animation, ImageBitmap?>()
 
     private val _loadedCount = MutableStateFlow(0)
@@ -27,7 +26,7 @@ class ThumbnailCache {
     fun preloadAll(animations: List<Animation>) {
         animations.forEach { animation ->
             scope.launch {
-                cache[animation] = extractFrame(animation)
+                cache[animation] = extractFrame(animation.id)
                 _loadedCount.update { it + 1 }
             }
         }
@@ -35,8 +34,8 @@ class ThumbnailCache {
 
     fun thumbnailFor(animation: Animation): ImageBitmap? = cache[animation]
 
-    private fun extractFrame(animation: Animation): ImageBitmap? {
-        val resourcePath = "/anim/${animation.id}.mp4"
+    private fun extractFrame(animationId: String): ImageBitmap? {
+        val resourcePath = "/anim/$animationId.mp4"
         val inputStream = ThumbnailCache::class.java.getResourceAsStream(resourcePath)
             ?: return null
         return try {

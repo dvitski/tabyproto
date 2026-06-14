@@ -22,7 +22,7 @@ fun AnimationGrid(
         columns = GridCells.Adaptive(minSize = 140.dp),
         modifier = modifier.fillMaxSize(),
     ) {
-        items(animations, key = { it.name }) { animation ->
+        items(animations, key = { it.id }) { animation ->
             AnimationCell(
                 animation = animation,
                 thumbnail = thumbnailCache.thumbnailFor(animation),

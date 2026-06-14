@@ -9,6 +9,7 @@ interface TabySession : Closeable {
     val device: DeviceInfo
 
     suspend fun play(animation: Animation): CommandResult
+    suspend fun play(raw: RawAnimation): CommandResult
     suspend fun play(command: AnimationCommand): CommandResult
     suspend fun setBrightness(percent: Int): CommandResult
     suspend fun sendRaw(command: String): CommandResult
@@ -22,7 +23,15 @@ internal class UsbTabySession(
 ) : TabySession {
     override val transport = TabyTransport.USB
 
-    override suspend fun play(animation: Animation) = sendRaw(animation.id)
+    override suspend fun play(animation: Animation): CommandResult = when (animation) {
+        is Animation.Once    -> play(animation.raw)
+        is Animation.Looping -> when (val intro = animation.intro) {
+            null -> play(animation.body)
+            else -> play(AnimationCommand(intro, animation.body))
+        }
+    }
+
+    override suspend fun play(raw: RawAnimation) = sendRaw(raw.id)
     override suspend fun play(command: AnimationCommand) = sendRaw(command.toWireString())
 
     override suspend fun setBrightness(percent: Int): CommandResult {
@@ -42,7 +51,15 @@ internal class WifiTabySession(
 ) : TabySession {
     override val transport = TabyTransport.WIFI
 
-    override suspend fun play(animation: Animation) = sendRaw(animation.id)
+    override suspend fun play(animation: Animation): CommandResult = when (animation) {
+        is Animation.Once    -> play(animation.raw)
+        is Animation.Looping -> when (val intro = animation.intro) {
+            null -> play(animation.body)
+            else -> play(AnimationCommand(intro, animation.body))
+        }
+    }
+
+    override suspend fun play(raw: RawAnimation) = sendRaw(raw.id)
     override suspend fun play(command: AnimationCommand) = sendRaw(command.toWireString())
 
     override suspend fun setBrightness(percent: Int): CommandResult {

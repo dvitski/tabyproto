@@ -12,7 +12,13 @@ object AnimationResources {
 
     fun preloadAll(animations: List<Animation>, scope: kotlinx.coroutines.CoroutineScope) {
         animations.forEach { animation ->
-            scope.launch(Dispatchers.IO) { videoPath(animation.id) }
+            scope.launch(Dispatchers.IO) {
+                videoPath(animation.id)
+                if (animation is Animation.Looping) {
+                    val intro = animation.intro
+                    if (intro != null) videoPath(intro.id)
+                }
+            }
         }
     }
 

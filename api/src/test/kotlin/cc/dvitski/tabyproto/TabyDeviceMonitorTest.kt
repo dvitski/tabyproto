@@ -27,6 +27,7 @@ private class FakeSession(
 ) : TabySession {
     var closed = false
     override suspend fun play(animation: Animation) = sendRaw(animation.id)
+    override suspend fun play(raw: RawAnimation) = sendRaw(raw.id)
     override suspend fun play(command: AnimationCommand) = sendRaw(command.toWireString())
     override suspend fun setBrightness(percent: Int) = sendRaw("BRIGHTNESS $percent")
     override suspend fun sendRaw(command: String) =

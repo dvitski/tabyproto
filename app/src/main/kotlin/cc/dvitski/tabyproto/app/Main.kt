@@ -1,6 +1,7 @@
 package cc.dvitski.tabyproto.app
 
-import cc.dvitski.tabyproto.Animation
+import cc.dvitski.tabyproto.Animations
+import cc.dvitski.tabyproto.RawAnimation
 import cc.dvitski.tabyproto.Taby
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -16,7 +17,7 @@ fun main() = runBlocking {
     Runtime.getRuntime().addShutdownHook(Thread {
         logger.info("\nShutting down...")
         try {
-            runBlocking { session.play(Animation.TURN_OFF_TV) }
+            runBlocking { session.play(RawAnimation.TURN_OFF_TV) }
         } catch (e: Exception) {
             logger.info("  teardown error: ${e.message}")
         } finally {
@@ -30,12 +31,12 @@ fun main() = runBlocking {
     logger.info("")
 
     logger.info("Playing startup animation...")
-    val result = session.play(Animation.entries.random())
+    val result = session.play(Animations.all.random())
     logger.info("  → ${result.rawResponse}")
 
     logger.info("Press Ctrl+C to disconnect.")
     while (true) {
         delay(7.seconds)
-        session.play(Animation.entries.random())
+        session.play(Animations.all.random())
     }
 }

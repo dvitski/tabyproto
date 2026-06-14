@@ -1,6 +1,6 @@
 package cc.dvitski.tabyproto
 
-enum class Animation(val id: String) {
+enum class RawAnimation(val id: String) {
     ANGRY_01_LOOP("angry_01_loop"),
     ANGRY_02_LOOP("angry_02_loop"),
     BASKETBALL_DUNK("basketball_dunk"),
@@ -73,10 +73,13 @@ enum class Animation(val id: String) {
     WORKING_LAPTOP_NORMAL_LOOP("working_laptop_normal_loop"),
     WORKING_LOOP("working_loop"),
     WORKSPACES_IN("workspaces_in"),
+    WORKSPACES_LOOP("workspaces_loop"),
+    WOW("wow"),
+    YEAH("yeah"),
 }
 
-data class AnimationCommand(val from: Animation, val to: Animation) {
+data class AnimationCommand(val from: RawAnimation, val to: RawAnimation) {
     internal fun toWireString() = "${from.id}>${to.id}"
 }
 
-infix fun Animation.then(next: Animation) = AnimationCommand(this, next)
+infix fun RawAnimation.then(next: RawAnimation) = AnimationCommand(this, next)

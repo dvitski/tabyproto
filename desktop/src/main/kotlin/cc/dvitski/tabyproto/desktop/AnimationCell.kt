@@ -113,7 +113,7 @@ fun AnimationCell(
         }
 
         Text(
-            text = animation.id,
+            text = animation.displayName,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

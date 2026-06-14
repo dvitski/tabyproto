@@ -60,18 +60,39 @@ fun Sidebar(
     val playerState = rememberVideoPlayerState()
     var videoVisible by remember { mutableStateOf(false) }
     var videoStarted by remember { mutableStateOf(false) }
+    var playingIntro by remember { mutableStateOf(false) }
 
     DisposableEffect(playerState) { onDispose { playerState.dispose() } }
 
     LaunchedEffect(lastSent) {
         videoStarted = false
         videoVisible = false
+        playingIntro = false
         playerState.pause()
         if (lastSent != null) {
-            val path = AnimationResources.videoPath(lastSent.id) ?: return@LaunchedEffect
-            videoVisible = true
-            playerState.loop = false
-            playerState.openUri(path)
+            when (lastSent) {
+                is Animation.Once -> {
+                    val path = AnimationResources.videoPath(lastSent.raw.id) ?: return@LaunchedEffect
+                    videoVisible = true
+                    playerState.loop = false
+                    playerState.openUri(path)
+                }
+                is Animation.Looping -> {
+                    val intro = lastSent.intro
+                    if (intro != null) {
+                        val introPath = AnimationResources.videoPath(intro.id) ?: return@LaunchedEffect
+                        videoVisible = true
+                        playingIntro = true
+                        playerState.loop = false
+                        playerState.openUri(introPath)
+                    } else {
+                        val bodyPath = AnimationResources.videoPath(lastSent.body.id) ?: return@LaunchedEffect
+                        videoVisible = true
+                        playerState.loop = true
+                        playerState.openUri(bodyPath)
+                    }
+                }
+            }
         }
     }
 
@@ -79,8 +100,20 @@ fun Sidebar(
         when {
             playerState.isPlaying && !playerState.isLoading -> videoStarted = true
             videoStarted && !playerState.isPlaying && !playerState.isLoading -> {
+                val current = lastSent
+                if (playingIntro && current is Animation.Looping) {
+                    val bodyPath = AnimationResources.videoPath(current.body.id)
+                    if (bodyPath != null) {
+                        playingIntro = false
+                        videoStarted = false
+                        playerState.loop = true
+                        playerState.openUri(bodyPath)
+                        return@LaunchedEffect
+                    }
+                }
                 videoVisible = false
                 videoStarted = false
+                playingIntro = false
             }
         }
     }
@@ -145,7 +178,7 @@ fun Sidebar(
                 )
             } else {
                 Text(
-                    text = lastSent?.id ?: if (active != null) "connected" else "no device",
+                    text = lastSent?.displayName ?: if (active != null) "connected" else "no device",
                     fontSize = 10.sp,
                     color = theme.sidebarText.copy(alpha = 0.3f),
                     maxLines = 1,

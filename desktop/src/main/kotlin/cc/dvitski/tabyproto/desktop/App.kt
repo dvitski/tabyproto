@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.dvitski.tabyproto.Animation
+import cc.dvitski.tabyproto.Animations
 import cc.dvitski.tabyproto.TabyDevice
 import cc.dvitski.tabyproto.TabyDeviceMonitor
 import cc.dvitski.tabyproto.TabyTransport
@@ -67,7 +68,7 @@ class AppState {
     val sendingAnimation: StateFlow<Animation?> = _sendingAnimation.asStateFlow()
 
     val thumbnailCache: ThumbnailCache = ThumbnailCache()
-    val totalAnimations: Int = Animation.entries.size
+    val totalAnimations: Int = Animations.all.size
 
     private val _selectedScreen = MutableStateFlow<Screen>(Screen.Home)
     val selectedScreen: StateFlow<Screen> = _selectedScreen.asStateFlow()
@@ -96,8 +97,8 @@ class AppState {
 
     init {
         monitor.start()
-        thumbnailCache.preloadAll(Animation.entries)
-        AnimationResources.preloadAll(Animation.entries, scope)
+        thumbnailCache.preloadAll(Animations.all)
+        AnimationResources.preloadAll(Animations.all, scope)
         scope.launch(Dispatchers.IO) { monitor.manualHosts.collect { hostsStore.save(it) } }
         scope.launch {
             monitor.devices.collect { list ->
@@ -203,7 +204,7 @@ fun App(appState: AppState) {
                                 lastSent = lastSent,
                             )
                             is Screen.Settings -> {
-                                val filtered = Animation.entries.filter { animation ->
+                                val filtered = Animations.all.filter { animation ->
                                     query.isBlank() || animation.id.contains(query, ignoreCase = true)
                                 }
                                 SettingsScreen(
