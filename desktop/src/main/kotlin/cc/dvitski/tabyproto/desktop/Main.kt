@@ -14,7 +14,7 @@ fun main() = application {
             exitApplication()
         },
         title = "TabyProto",
-        state = rememberWindowState(width = 900.dp, height = 700.dp),
+        state = rememberWindowState(width = 1100.dp, height = 860.dp),
     ) {
         App(appState)
     }

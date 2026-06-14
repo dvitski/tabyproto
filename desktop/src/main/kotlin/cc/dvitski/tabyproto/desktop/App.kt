@@ -30,8 +30,10 @@ import cc.dvitski.tabyproto.TabyDeviceMonitor
 import cc.dvitski.tabyproto.TabyTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +47,8 @@ sealed class Screen {
 enum class SettingsCategory { PlayAnimations, Music, Voice, Device, Appearance }
 
 enum class ListeningState { Idle, WakeWordDetected, Listening, Responding }
+
+enum class AnimationTypeFilter { All, Once, Loop, IntroLoop }
 
 class AppState {
 
@@ -60,6 +64,9 @@ class AppState {
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
+
+    private val _typeFilter = MutableStateFlow(AnimationTypeFilter.All)
+    val typeFilter: StateFlow<AnimationTypeFilter> = _typeFilter.asStateFlow()
 
     private val _lastSent = MutableStateFlow<Animation?>(null)
     val lastSent: StateFlow<Animation?> = _lastSent.asStateFlow()
@@ -85,9 +92,24 @@ class AppState {
     val isDark: StateFlow<Boolean> = _isDark.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
 
+    private val _brightness = MutableStateFlow<Int?>(null)
+    val brightness: StateFlow<Int?> = _brightness.asStateFlow()
+    private var brightnessJob: Job? = null
+
     fun navigate(screen: Screen) { _selectedScreen.value = screen }
     fun showVoiceOverlay() { _voiceOverlayVisible.value = true }
     fun hideVoiceOverlay() { _voiceOverlayVisible.value = false }
+
+    fun setBrightness(percent: Int) {
+        _brightness.value = percent
+        brightnessJob?.cancel()
+        brightnessJob = scope.launch {
+            delay(100)
+            val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: return@launch
+            if (!device.online) return@launch
+            runCatching { monitor.session(device).setBrightness(percent) }
+        }
+    }
 
     fun setTheme(isDark: Boolean, palette: ColorPalette) {
         _isDark.value = isDark
@@ -111,12 +133,19 @@ class AppState {
                 }
             }
         }
+        scope.launch {
+            _activeDeviceId.collect { id ->
+                val polled = devices.value.firstOrNull { it.id == id }?.info?.brightnessPercent
+                if (_brightness.value == null) _brightness.value = polled
+            }
+        }
     }
 
     fun selectDevice(id: String) { _activeDeviceId.value = id }
     fun addManualHost(host: String) = monitor.addManualHost(host)
     fun removeManualHost(host: String) = monitor.removeManualHost(host)
     fun setQuery(q: String) { _query.value = q }
+    fun setTypeFilter(f: AnimationTypeFilter) { _typeFilter.value = f }
 
     suspend fun sendAnimation(animation: Animation): Result<Unit> {
         val device = devices.value.firstOrNull { it.id == _activeDeviceId.value }
@@ -149,12 +178,14 @@ fun App(appState: AppState) {
         val devices by appState.devices.collectAsState()
         val activeDeviceId by appState.activeDeviceId.collectAsState()
         val query by appState.query.collectAsState()
+        val typeFilter by appState.typeFilter.collectAsState()
         val lastSent by appState.lastSent.collectAsState()
         val sendingAnimation by appState.sendingAnimation.collectAsState()
         val loadedCount by appState.thumbnailCache.loadedCount.collectAsState()
         val selectedScreen by appState.selectedScreen.collectAsState()
         val voiceOverlayVisible by appState.voiceOverlayVisible.collectAsState()
         val listeningState by appState.listeningState.collectAsState()
+        val brightness by appState.brightness.collectAsState()
         val total = appState.totalAnimations
         val thumbnailsReady = loadedCount >= total
         val snackbarHostState = remember { SnackbarHostState() }
@@ -193,6 +224,8 @@ fun App(appState: AppState) {
                         activeDeviceId = activeDeviceId,
                         lastSent = lastSent,
                         listeningState = listeningState,
+                        brightness = brightness,
+                        onBrightnessChange = appState::setBrightness,
                         onNavigate = appState::navigate,
                         onVoiceClick = appState::showVoiceOverlay,
                     )
@@ -202,10 +235,18 @@ fun App(appState: AppState) {
                                 devices = devices,
                                 activeDeviceId = activeDeviceId,
                                 lastSent = lastSent,
+                                brightness = brightness,
+                                onBrightnessChange = appState::setBrightness,
                             )
                             is Screen.Settings -> {
                                 val filtered = Animations.all.filter { animation ->
-                                    query.isBlank() || animation.id.contains(query, ignoreCase = true)
+                                    (query.isBlank() || animation.id.contains(query, ignoreCase = true)) &&
+                                    when (typeFilter) {
+                                        AnimationTypeFilter.All       -> true
+                                        AnimationTypeFilter.Once      -> animation is Animation.Once
+                                        AnimationTypeFilter.Loop      -> animation is Animation.Looping && animation.intro == null
+                                        AnimationTypeFilter.IntroLoop -> animation is Animation.Looping && animation.intro != null
+                                    }
                                 }
                                 SettingsScreen(
                                     selectedCategory = screen.category,
@@ -213,6 +254,8 @@ fun App(appState: AppState) {
                                     animations = filtered,
                                     query = query,
                                     onQueryChange = appState::setQuery,
+                                    typeFilter = typeFilter,
+                                    onTypeFilterChange = appState::setTypeFilter,
                                     thumbnailCache = appState.thumbnailCache,
                                     sendingAnimation = sendingAnimation,
                                     onSend = onSend,
@@ -224,6 +267,8 @@ fun App(appState: AppState) {
                                     isDark = isDark,
                                     currentPalette = palette,
                                     onSetTheme = appState::setTheme,
+                                    brightness = brightness,
+                                    onBrightnessChange = appState::setBrightness,
                                 )
                             }
                         }

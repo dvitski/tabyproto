@@ -18,10 +18,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.Slider
+import androidx.compose.material.SliderDefaults
+import androidx.compose.material.icons.rounded.Brightness6
 import androidx.compose.material.icons.rounded.DeviceHub
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Settings
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +55,8 @@ fun Sidebar(
     activeDeviceId: String?,
     lastSent: Animation?,
     listeningState: ListeningState,
+    brightness: Int?,
+    onBrightnessChange: (Int) -> Unit,
     onNavigate: (Screen) -> Unit,
     onVoiceClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -120,7 +126,7 @@ fun Sidebar(
 
     Column(
         modifier = modifier
-            .width(168.dp)
+            .width(200.dp)
             .fillMaxHeight()
             .background(theme.sidebarBg),
         horizontalAlignment = Alignment.Start,
@@ -128,10 +134,10 @@ fun Sidebar(
         Text(
             text = "TABYPROTO",
             color = theme.accent,
-            fontSize = 16.sp,
+            fontSize = 19.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp,
-            modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 14.dp),
+            modifier = Modifier.padding(start = 18.dp, top = 24.dp, bottom = 16.dp),
         )
         Box(Modifier.fillMaxWidth().height(1.dp).background(theme.sidebarText.copy(alpha = 0.12f)))
         Spacer(Modifier.height(6.dp))
@@ -157,8 +163,8 @@ fun Sidebar(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Rounded.DeviceHub, contentDescription = null, tint = theme.sidebarText.copy(alpha = 0.4f), modifier = Modifier.size(13.dp))
-                Text("DEVICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 9.sp, letterSpacing = 1.sp)
+                Icon(Icons.Rounded.DeviceHub, contentDescription = null, tint = theme.sidebarText.copy(alpha = 0.4f), modifier = Modifier.size(15.dp))
+                Text("DEVICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 11.sp, letterSpacing = 1.sp)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(Modifier.size(6.dp).clip(CircleShape).background(if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.3f)))
@@ -166,24 +172,48 @@ fun Sidebar(
                     text = when (active?.transport) {
                         TabyTransport.USB -> "USB"; TabyTransport.WIFI -> "WiFi"; TabyTransport.BLUETOOTH -> "BT"; null -> "—"
                     },
-                    fontSize = 11.sp,
+                    fontSize = 13.sp,
                     color = if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.4f),
                 )
             }
             if (videoVisible) {
                 VideoPlayerSurface(
                     playerState = playerState,
-                    modifier = Modifier.fillMaxWidth().height(60.dp).clip(AppItemShape),
+                    modifier = Modifier.fillMaxWidth().height(72.dp).clip(AppItemShape),
                     contentScale = ContentScale.Fit,
                 )
             } else {
                 Text(
                     text = lastSent?.displayName ?: if (active != null) "connected" else "no device",
-                    fontSize = 10.sp,
+                    fontSize = 12.sp,
                     color = theme.sidebarText.copy(alpha = 0.3f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (online) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Brightness6,
+                        contentDescription = null,
+                        tint = theme.sidebarText.copy(alpha = 0.4f),
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Slider(
+                        value = (brightness ?: 100).toFloat() / 100f,
+                        onValueChange = { onBrightnessChange((it * 100).roundToInt().coerceIn(0, 100)) },
+                        modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(
+                            thumbColor = theme.accent,
+                            activeTrackColor = theme.accent,
+                            inactiveTrackColor = theme.sidebarText.copy(alpha = 0.2f),
+                        ),
+                    )
+                }
             }
         }
 
@@ -204,8 +234,8 @@ fun Sidebar(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(Icons.Rounded.Mic, contentDescription = null,
                     tint = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.4f),
-                    modifier = Modifier.size(13.dp))
-                Text("VOICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 9.sp, letterSpacing = 1.sp)
+                    modifier = Modifier.size(15.dp))
+                Text("VOICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 11.sp, letterSpacing = 1.sp)
             }
             Text(
                 text = when (listeningState) {
@@ -214,7 +244,7 @@ fun Sidebar(
                     ListeningState.Listening -> "Listening…"
                     ListeningState.Responding -> "Responding"
                 },
-                fontSize = 11.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.5f),
             )
@@ -237,11 +267,11 @@ private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick
             .clip(AppItemShape)
             .background(bgColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+            .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(20.dp))
-        Text(label, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = contentColor)
+        Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
+        Text(label, fontSize = 16.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = contentColor)
     }
 }

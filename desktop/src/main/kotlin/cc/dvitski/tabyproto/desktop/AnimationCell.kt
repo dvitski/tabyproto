@@ -12,11 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -95,31 +98,55 @@ fun AnimationCell(
                 ) {
                     Box(
                         Modifier
-                            .size(36.dp)
+                            .size(44.dp)
                             .clip(androidx.compose.foundation.shape.CircleShape)
                             .background(theme.accent.copy(alpha = 0.85f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(26.dp))
                     }
                 }
             }
 
             if (isSending) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.50f)), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = theme.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                    CircularProgressIndicator(color = theme.accent, modifier = Modifier.size(34.dp), strokeWidth = 3.dp)
                 }
+            }
+
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 3.dp, vertical = 2.dp),
+            ) {
+                Icon(
+                    imageVector = when {
+                        animation is Animation.Looping && animation.intro != null -> Icons.Rounded.AllInclusive
+                        animation is Animation.Looping                            -> Icons.Rounded.Repeat
+                        else                                                      -> Icons.Rounded.PlayArrow
+                    },
+                    contentDescription = when {
+                        animation is Animation.Looping && animation.intro != null -> "Intro + loop"
+                        animation is Animation.Looping                            -> "Looping"
+                        else                                                      -> "Play once"
+                    },
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(12.dp),
+                )
             }
         }
 
         Text(
             text = animation.displayName,
-            fontSize = 11.sp,
+            fontSize = 13.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             color = theme.textPrimary,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
         )
     }
 }

@@ -15,9 +15,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Icon
+import androidx.compose.material.Slider
+import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AllInclusive
+import androidx.compose.material.icons.rounded.Brightness6
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Search
+import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +54,8 @@ fun SettingsScreen(
     animations: List<Animation>,
     query: String,
     onQueryChange: (String) -> Unit,
+    typeFilter: AnimationTypeFilter,
+    onTypeFilterChange: (AnimationTypeFilter) -> Unit,
     thumbnailCache: ThumbnailCache,
     sendingAnimation: Animation?,
     onSend: (Animation) -> Unit,
@@ -57,19 +67,21 @@ fun SettingsScreen(
     isDark: Boolean,
     currentPalette: ColorPalette,
     onSetTheme: (Boolean, ColorPalette) -> Unit,
+    brightness: Int?,
+    onBrightnessChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
     Row(modifier = modifier.fillMaxSize().background(theme.background)) {
         Column(
-            modifier = Modifier.width(168.dp).fillMaxHeight().background(theme.surface).padding(vertical = 12.dp),
+            modifier = Modifier.width(200.dp).fillMaxHeight().background(theme.surface).padding(vertical = 14.dp),
         ) {
             Text(
                 text = "SETTINGS",
                 color = theme.textSecondary,
-                fontSize = 10.sp,
+                fontSize = 12.sp,
                 letterSpacing = 1.sp,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             )
             SettingsCategory.entries.forEach { category ->
                 CategoryItem(category.label, category == selectedCategory) { onCategorySelect(category) }
@@ -77,10 +89,10 @@ fun SettingsScreen(
         }
         Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(20.dp)) {
             when (selectedCategory) {
-                SettingsCategory.PlayAnimations -> PlayAnimationsDetail(animations, query, onQueryChange, thumbnailCache, sendingAnimation, onSend)
+                SettingsCategory.PlayAnimations -> PlayAnimationsDetail(animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend)
                 SettingsCategory.Music -> PlaceholderDetail("Music", "Music integration coming soon.")
                 SettingsCategory.Voice -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
-                SettingsCategory.Device -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost)
+                SettingsCategory.Device -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange)
                 SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme)
             }
         }
@@ -97,11 +109,11 @@ private fun CategoryItem(label: String, selected: Boolean, onClick: () -> Unit) 
             .clip(AppItemShape)
             .background(if (selected) theme.accent.copy(alpha = 0.15f) else theme.surface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 14.dp, vertical = 11.dp),
     ) {
         Text(
             text = label,
-            fontSize = 13.sp,
+            fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = if (selected) theme.accent else theme.textSecondary,
         )
@@ -113,13 +125,15 @@ private fun PlayAnimationsDetail(
     animations: List<Animation>,
     query: String,
     onQueryChange: (String) -> Unit,
+    typeFilter: AnimationTypeFilter,
+    onTypeFilterChange: (AnimationTypeFilter) -> Unit,
     thumbnailCache: ThumbnailCache,
     sendingAnimation: Animation?,
     onSend: (Animation) -> Unit,
 ) {
     val theme = LocalAppTheme.current
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Play Animations", color = theme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Play Animations", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -130,18 +144,24 @@ private fun PlayAnimationsDetail(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Rounded.Search, contentDescription = null, tint = theme.textSecondary, modifier = Modifier.size(18.dp))
+            Icon(Icons.Rounded.Search, contentDescription = null, tint = theme.textSecondary, modifier = Modifier.size(22.dp))
             Box(modifier = Modifier.weight(1f)) {
                 BasicTextField(
                     value = query,
                     onValueChange = onQueryChange,
                     singleLine = true,
-                    textStyle = TextStyle(color = theme.textPrimary, fontSize = 13.sp),
+                    textStyle = TextStyle(color = theme.textPrimary, fontSize = 15.sp),
                     cursorBrush = SolidColor(theme.accent),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (query.isEmpty()) Text("Filter animations…", color = theme.textSecondary, fontSize = 13.sp)
+                if (query.isEmpty()) Text("Filter animations…", color = theme.textSecondary, fontSize = 15.sp)
             }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TypeFilterChip(label = "All",        icon = null,                      selected = typeFilter == AnimationTypeFilter.All)       { onTypeFilterChange(AnimationTypeFilter.All) }
+            TypeFilterChip(label = "Once",       icon = Icons.Rounded.PlayArrow,   selected = typeFilter == AnimationTypeFilter.Once)      { onTypeFilterChange(AnimationTypeFilter.Once) }
+            TypeFilterChip(label = "Loop",       icon = Icons.Rounded.Repeat,      selected = typeFilter == AnimationTypeFilter.Loop)      { onTypeFilterChange(AnimationTypeFilter.Loop) }
+            TypeFilterChip(label = "Intro Loop", icon = Icons.Rounded.AllInclusive,selected = typeFilter == AnimationTypeFilter.IntroLoop) { onTypeFilterChange(AnimationTypeFilter.IntroLoop) }
         }
         AnimationGrid(
             animations = animations,
@@ -154,11 +174,41 @@ private fun PlayAnimationsDetail(
 }
 
 @Composable
+private fun TypeFilterChip(
+    label: String,
+    icon: ImageVector?,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val theme = LocalAppTheme.current
+    Row(
+        modifier = Modifier
+            .clip(AppButtonShape)
+            .border(1.dp, if (selected) theme.accent else theme.border, AppButtonShape)
+            .background(if (selected) theme.accent.copy(alpha = 0.12f) else theme.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = if (selected) theme.accent else theme.textSecondary, modifier = Modifier.size(14.dp))
+        }
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) theme.accent else theme.textSecondary,
+        )
+    }
+}
+
+@Composable
 private fun PlaceholderDetail(title: String, body: String) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, color = theme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Text(body, color = theme.textSecondary, fontSize = 13.sp)
+        Text(title, color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(body, color = theme.textSecondary, fontSize = 15.sp)
     }
 }
 
@@ -169,11 +219,34 @@ private fun DeviceDetail(
     onSelect: (String) -> Unit,
     onAddHost: (String) -> Unit,
     onRemoveHost: (String) -> Unit,
+    brightness: Int?,
+    onBrightnessChange: (Int) -> Unit,
 ) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Device", color = theme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Device", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         DeviceSelector(devices, activeDeviceId, onSelect, onAddHost, onRemoveHost)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("BRIGHTNESS", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Rounded.Brightness6, contentDescription = null, tint = theme.textSecondary, modifier = Modifier.size(20.dp))
+                Slider(
+                    value = (brightness ?: 100).toFloat() / 100f,
+                    onValueChange = { onBrightnessChange((it * 100).roundToInt().coerceIn(0, 100)) },
+                    enabled = brightness != null,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(thumbColor = theme.accent, activeTrackColor = theme.accent),
+                )
+                Text(
+                    text = if (brightness != null) "$brightness%" else "—",
+                    color = theme.textSecondary,
+                    fontSize = 13.sp,
+                )
+            }
+        }
     }
 }
 
@@ -181,10 +254,10 @@ private fun DeviceDetail(
 private fun AppearanceDetail(isDark: Boolean, currentPalette: ColorPalette, onSetTheme: (Boolean, ColorPalette) -> Unit) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        Text("Appearance", color = theme.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Appearance", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("MODE", color = theme.textSecondary, fontSize = 10.sp, letterSpacing = 1.sp)
+            Text("MODE", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModeButton("Light", !isDark, Modifier.weight(1f)) { onSetTheme(false, currentPalette) }
                 ModeButton("Dark", isDark, Modifier.weight(1f)) { onSetTheme(true, currentPalette) }
@@ -192,7 +265,7 @@ private fun AppearanceDetail(isDark: Boolean, currentPalette: ColorPalette, onSe
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("PALETTE", color = theme.textSecondary, fontSize = 10.sp, letterSpacing = 1.sp)
+            Text("PALETTE", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ColorPalette.entries.forEach { palette ->
                     PaletteSwatch(palette, isDark, palette == currentPalette) { onSetTheme(isDark, palette) }
@@ -216,7 +289,7 @@ private fun ModeButton(label: String, selected: Boolean, modifier: Modifier = Mo
     ) {
         Text(
             text = label,
-            fontSize = 13.sp,
+            fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = if (selected) theme.accent else theme.textSecondary,
         )
@@ -229,7 +302,7 @@ private fun PaletteSwatch(palette: ColorPalette, isDark: Boolean, selected: Bool
     val color = if (isDark) palette.darkAccent else palette.lightAccent
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(52.dp)
             .clip(AppItemShape)
             .border(if (selected) 3.dp else 1.dp, if (selected) theme.textPrimary else color.copy(alpha = 0.4f), AppItemShape)
             .background(color)

@@ -19,7 +19,7 @@ fun AnimationGrid(
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 140.dp),
+        columns = GridCells.Adaptive(minSize = 170.dp),
         modifier = modifier.fillMaxSize(),
     ) {
         items(animations, key = { it.id }) { animation ->
@@ -28,7 +28,7 @@ fun AnimationGrid(
                 thumbnail = thumbnailCache.thumbnailFor(animation),
                 isSending = sendingAnimation == animation,
                 onSend = { onSend(animation) },
-                modifier = Modifier.padding(4.dp),
+                modifier = Modifier.padding(6.dp),
             )
         }
     }
