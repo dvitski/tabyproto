@@ -78,9 +78,9 @@ Runs as a single coroutine. On each iteration:
 3. Selects pool based on `elapsed >= relaxedThresholdSec`.
 4. Picks a random animation from the pool (no immediate repeat).
 5. Calls `onRequestAnimation(anim, AnimationPriority.IDLE)`.
-6. If `dimEnabled` and `elapsed >= dimDelayThresholdSec`: computes a linearly interpolated brightness between `savedBrightness` and `dimFloorPercent` based on how far past the dim threshold we are (capped at floor). Calls `onOverrideBrightness(computed)`.
+6. If `dimEnabled` and `elapsed >= dimDelayThresholdSec`: computes brightness as a linear interpolation from `savedBrightness` (at `elapsed == dimDelayThresholdSec`) to `dimFloorPercent` (at `elapsed == 2 × dimDelayThresholdSec`), clamped to floor. Calls `onOverrideBrightness(computed)`.
 
-The brightness ramp ticks on the same `variationIntervalSec` cadence — no separate timer.
+The brightness ramp ticks on the same `variationIntervalSec` cadence — no separate timer. The first dim tick therefore fires at the first variation tick after `dimDelayThresholdSec` has elapsed.
 
 ### Brightness override vs. saved setting
 
