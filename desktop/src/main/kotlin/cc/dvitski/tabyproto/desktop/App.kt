@@ -39,17 +39,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
 sealed class Screen {
     object Home : Screen()
-    data class Settings(val category: SettingsCategory = SettingsCategory.PlayAnimations) : Screen()
+    data class Settings(val category: SettingsCategory = SettingsCategory.Device) : Screen()
 }
 
-enum class SettingsCategory { PlayAnimations, Music, Voice, Device, Appearance, Idle }
+enum class SettingsCategory { Music, Voice, Device, Appearance, Idle }
 
 enum class ListeningState { Idle, WakeWordDetected, Listening, Responding }
 
@@ -195,16 +193,6 @@ class AppState {
                 if (_brightness.value == null) _brightness.value = polled
             }
         }
-        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-        scope.launch {
-            _activeDeviceId.flatMapLatest { id ->
-                val device = if (id != null) devices.value.firstOrNull { it.id == id } else null
-                if (device != null) controller(device).currentAnimation else flowOf(null)
-            }.collect { anim ->
-                val idlePools = IdleScheduler.IDLE_POOL + IdleScheduler.RELAXED_POOL
-                _lastSent.value = if (anim == null || anim in idlePools) null else anim
-            }
-        }
         scope.launch {
             musicMonitor.state.collect { state ->
                 val id = _activeDeviceId.value ?: return@collect
@@ -214,7 +202,7 @@ class AppState {
                         controller(device).cancel(AnimationPriority.MUSIC)
                         controller(device).stop(AnimationPriority.MUSIC)
                     }
-                    is MusicState.Active -> if (state.primary().isPlaying) {
+                    is MusicState.Playing -> if (state.isPlaying) {
                         idleScheduler.notifyActivity()
                         controller(device).request(
                             priority   = AnimationPriority.MUSIC,
@@ -232,7 +220,8 @@ class AppState {
         scope.launch {
             while (true) {
                 delay(2_000)
-                if ((musicMonitor.state.value as? MusicState.Active)?.sessions?.none { it.isPlaying } != false) continue
+                val playing = musicMonitor.state.value as? MusicState.Playing
+                if (playing == null || !playing.isPlaying) continue
                 val id = _activeDeviceId.value ?: continue
                 val device = devices.value.firstOrNull { it.id == id && it.online } ?: continue
                 controller(device).request(
@@ -270,6 +259,7 @@ class AppState {
                 durationMs = AnimationResources.durations[introOrBody],
                 preempt   = true,
             )
+            _lastSent.value = animation
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -278,7 +268,7 @@ class AppState {
         }
     }
 
-    fun sendMusicControl(control: MediaControl, appId: String?) = musicMonitor.sendControl(control, appId)
+    fun sendMusicControl(control: MediaControl) = musicMonitor.sendControl(control)
 
     private suspend fun controller(device: TabyDevice): AnimationController {
         controllers[device.id]?.let { return it }

@@ -79,7 +79,7 @@ fun SettingsScreen(
     brightness: Int?,
     onBrightnessChange: (Int) -> Unit,
     musicState: MusicState,
-    onMusicControl: (MediaControl, String?) -> Unit,
+    onMusicControl: (MediaControl) -> Unit,
     idleSettings: IdleSettings,
     onIdleSettingsChange: (IdleSettings) -> Unit,
     modifier: Modifier = Modifier,
@@ -165,42 +165,35 @@ private fun TypeFilterChip(
 }
 
 @Composable
-private fun MusicDetail(state: MusicState, onControl: (MediaControl, String?) -> Unit) {
+private fun MusicDetail(state: MusicState, onControl: (MediaControl) -> Unit) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("Music", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         when (state) {
             MusicState.Idle -> Text("No music playing", color = theme.textSecondary, fontSize = 15.sp)
-            is MusicState.Active -> {
-                Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                    state.sessions.forEach { session ->
-                        val appId = session.appId
-                        MusicSessionDetail(session = session, onControl = { c -> onControl(c, appId) })
-                    }
-                }
-            }
+            is MusicState.Playing -> MusicSessionDetail(state = state, onControl = onControl)
         }
     }
 }
 
 @Composable
-private fun MusicSessionDetail(session: NowPlaying, onControl: (MediaControl) -> Unit) {
+private fun MusicSessionDetail(state: MusicState.Playing, onControl: (MediaControl) -> Unit) {
     val theme = LocalAppTheme.current
     val accent = theme.accent
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        val sourceName = when (session.source) { MusicSource.Spotify -> "Spotify"; MusicSource.Tidal -> "Tidal"; else -> "Music" }
-        Text(sourceName, color = if (session.isPlaying) accent else theme.textSecondary,
+        val sourceName = when (state.source) { MusicSource.Spotify -> "Spotify"; MusicSource.Tidal -> "Tidal"; else -> "Music" }
+        Text(sourceName, color = if (state.isPlaying) accent else theme.textSecondary,
             fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
         Row(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MusicDetailAlbumArt(uri = session.albumArtUri, accent = accent)
+            MusicDetailAlbumArt(uri = state.albumArtUri, accent = accent)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(session.track ?: "Unknown", color = theme.textPrimary, fontSize = 18.sp,
+                Text(state.track ?: "Unknown", color = theme.textPrimary, fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold, maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text(session.artist ?: "", color = theme.textSecondary, fontSize = 15.sp,
+                Text(state.artist ?: "", color = theme.textSecondary, fontSize = 15.sp,
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
         }
@@ -209,7 +202,7 @@ private fun MusicSessionDetail(session: NowPlaying, onControl: (MediaControl) ->
                 Icon(Icons.Rounded.SkipPrevious, "Prev", tint = theme.textSecondary, modifier = Modifier.size(28.dp))
             }
             androidx.compose.material.IconButton(onClick = { onControl(MediaControl.PlayPause) }) {
-                Icon(if (session.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "PlayPause",
+                Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "PlayPause",
                     tint = accent, modifier = Modifier.size(32.dp))
             }
             androidx.compose.material.IconButton(onClick = { onControl(MediaControl.Next) }) {
