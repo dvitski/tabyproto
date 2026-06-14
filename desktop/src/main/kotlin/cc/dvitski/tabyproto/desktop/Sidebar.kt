@@ -140,7 +140,7 @@ fun Sidebar(
             if (videoVisible) {
                 VideoPlayerSurface(
                     playerState = playerState,
-                    modifier = Modifier.fillMaxWidth().clip(AppItemShape),
+                    modifier = Modifier.fillMaxWidth().height(60.dp).clip(AppItemShape),
                     contentScale = ContentScale.Fit,
                 )
             } else {
