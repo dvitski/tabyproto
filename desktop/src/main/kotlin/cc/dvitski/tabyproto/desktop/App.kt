@@ -39,6 +39,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -47,7 +49,7 @@ sealed class Screen {
     data class Settings(val category: SettingsCategory = SettingsCategory.PlayAnimations) : Screen()
 }
 
-enum class SettingsCategory { PlayAnimations, Music, Voice, Device, Appearance }
+enum class SettingsCategory { PlayAnimations, Music, Voice, Device, Appearance, Idle }
 
 enum class ListeningState { Idle, WakeWordDetected, Listening, Responding }
 
@@ -61,6 +63,7 @@ class AppState {
     private val themeStore = ThemeStore()
     private val musicMonitor = MusicMonitor(scope)
     private val controllers = ConcurrentHashMap<String, AnimationController>()
+    private lateinit var idleScheduler: IdleScheduler
 
     val devices: StateFlow<List<TabyDevice>> = monitor.devices
     val musicState: StateFlow<MusicState> = musicMonitor.state
@@ -98,6 +101,10 @@ class AppState {
     val isDark: StateFlow<Boolean> = _isDark.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
 
+    private val idleStore = IdleStore()
+    private val _idleSettings = MutableStateFlow(idleStore.load())
+    val idleSettings: StateFlow<IdleSettings> = _idleSettings.asStateFlow()
+
     private val _brightness = MutableStateFlow<Int?>(null)
     val brightness: StateFlow<Int?> = _brightness.asStateFlow()
     private var brightnessJob: Job? = null
@@ -123,11 +130,51 @@ class AppState {
         themeStore.save(isDark, palette)
     }
 
+    fun updateIdleSettings(s: IdleSettings) {
+        _idleSettings.value = s
+        idleStore.save(s)
+    }
+
     init {
         monitor.start()
         musicMonitor.start()
         thumbnailCache.preloadAll(Animations.all)
         AnimationResources.preloadAll(Animations.all, scope)
+        idleScheduler = IdleScheduler(
+            scope = scope,
+            settings = _idleSettings,
+            onRequestAnimation = { anim, priority ->
+                _activeDeviceId.value?.let { id ->
+                    devices.value.firstOrNull { it.id == id && it.online }?.let { device ->
+                        controller(device).request(priority, anim, durationMs = null, preempt = false)
+                    }
+                }
+            },
+            onStopAnimation = { priority ->
+                _activeDeviceId.value?.let { id ->
+                    devices.value.firstOrNull { it.id == id && it.online }?.let { device ->
+                        controller(device).stop(priority)
+                    }
+                }
+            },
+            onOverrideBrightness = { percent ->
+                _activeDeviceId.value?.let { id ->
+                    devices.value.firstOrNull { it.id == id && it.online }?.let { device ->
+                        runCatching { monitor.session(device).setBrightness(percent) }
+                    }
+                }
+            },
+            onRestoreBrightness = {
+                _brightness.value?.let { saved ->
+                    _activeDeviceId.value?.let { id ->
+                        devices.value.firstOrNull { it.id == id && it.online }?.let { device ->
+                            runCatching { monitor.session(device).setBrightness(saved) }
+                        }
+                    }
+                }
+            },
+            getSavedBrightness = { _brightness.value },
+        )
         scope.launch(Dispatchers.IO) { monitor.manualHosts.collect { hostsStore.save(it) } }
         scope.launch {
             monitor.devices.collect { list ->
@@ -148,6 +195,15 @@ class AppState {
                 if (_brightness.value == null) _brightness.value = polled
             }
         }
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        scope.launch {
+            _activeDeviceId.flatMapLatest { id ->
+                val device = if (id != null) devices.value.firstOrNull { it.id == id } else null
+                if (device != null) controller(device).currentAnimation else flowOf(null)
+            }.collect { anim ->
+                _lastSent.value = if (anim == null || anim == Animations.IDLE_01_LOOP) null else anim
+            }
+        }
         scope.launch {
             musicMonitor.state.collect { state ->
                 val id = _activeDeviceId.value ?: return@collect
@@ -156,14 +212,9 @@ class AppState {
                     MusicState.Idle -> {
                         controller(device).cancel(AnimationPriority.MUSIC)
                         controller(device).stop(AnimationPriority.MUSIC)
-                        controller(device).request(
-                            priority   = AnimationPriority.IDLE,
-                            animation  = Animations.IDLE_01_LOOP,
-                            durationMs = null,
-                            preempt    = false,
-                        )
                     }
-                    is MusicState.Playing -> if (state.isPlaying) {
+                    is MusicState.Active -> if (state.primary().isPlaying) {
+                        idleScheduler.notifyActivity()
                         controller(device).request(
                             priority   = AnimationPriority.MUSIC,
                             animation  = Animations.LISTENING_MUSIC_LOOP,
@@ -173,12 +224,6 @@ class AppState {
                     } else {
                         controller(device).cancel(AnimationPriority.MUSIC)
                         controller(device).stop(AnimationPriority.MUSIC)
-                        controller(device).request(
-                            priority   = AnimationPriority.IDLE,
-                            animation  = Animations.IDLE_01_LOOP,
-                            durationMs = null,
-                            preempt    = false,
-                        )
                     }
                 }
             }
@@ -186,7 +231,7 @@ class AppState {
         scope.launch {
             while (true) {
                 delay(2_000)
-                if ((musicMonitor.state.value as? MusicState.Playing)?.isPlaying != true) continue
+                if ((musicMonitor.state.value as? MusicState.Active)?.sessions?.none { it.isPlaying } != false) continue
                 val id = _activeDeviceId.value ?: continue
                 val device = devices.value.firstOrNull { it.id == id && it.online } ?: continue
                 controller(device).request(
@@ -217,13 +262,13 @@ class AppState {
                 is Animation.Once    -> animation.raw
                 is Animation.Looping -> animation.intro ?: animation.body
             }
+            idleScheduler.notifyActivity()
             controller(device).request(
                 priority  = AnimationPriority.MANUAL,
                 animation = animation,
                 durationMs = AnimationResources.durations[introOrBody],
                 preempt   = true,
             )
-            _lastSent.value = animation
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -232,7 +277,7 @@ class AppState {
         }
     }
 
-    fun sendMusicControl(control: MediaControl) = musicMonitor.sendControl(control)
+    fun sendMusicControl(control: MediaControl, appId: String?) = musicMonitor.sendControl(control, appId)
 
     private suspend fun controller(device: TabyDevice): AnimationController {
         controllers[device.id]?.let { return it }
@@ -262,6 +307,7 @@ fun App(appState: AppState) {
         val listeningState by appState.listeningState.collectAsState()
         val brightness by appState.brightness.collectAsState()
         val musicState by appState.musicState.collectAsState()
+        val idleSettings by appState.idleSettings.collectAsState()
         val total = appState.totalAnimations
         val thumbnailsReady = loadedCount >= total
         val snackbarHostState = remember { SnackbarHostState() }
@@ -351,6 +397,8 @@ fun App(appState: AppState) {
                                     onBrightnessChange = appState::setBrightness,
                                     musicState = musicState,
                                     onMusicControl = appState::sendMusicControl,
+                                    idleSettings = idleSettings,
+                                    onIdleSettingsChange = appState::updateIdleSettings,
                                 )
                             }
                         }
