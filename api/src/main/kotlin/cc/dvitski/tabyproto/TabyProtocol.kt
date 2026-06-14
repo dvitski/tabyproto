@@ -151,7 +151,7 @@ internal fun DeviceInfoRaw.toDomain() = DeviceInfo(
 
 // ── Choice signal ──────────────────────────────────────────────────────────────
 
-internal enum class ChoiceSelection { CHOICE_1, CHOICE_2, ACTION, NONE }
+enum class ChoiceSelection { CHOICE_1, CHOICE_2, ACTION, NONE }
 
 @Serializable
 internal data class ChoiceSignalRaw(
@@ -159,7 +159,7 @@ internal data class ChoiceSignalRaw(
     @SerialName("selection") val selection: String = "none",
 )
 
-internal data class ChoiceSignal(
+data class ChoiceSignal(
     val signal: Int,
     val selection: ChoiceSelection,
 )

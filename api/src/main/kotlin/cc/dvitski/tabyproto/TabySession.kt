@@ -1,6 +1,8 @@
 package cc.dvitski.tabyproto
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.Closeable
 
@@ -13,6 +15,9 @@ interface TabySession : Closeable {
     suspend fun play(command: AnimationCommand): CommandResult
     suspend fun setBrightness(percent: Int): CommandResult
     suspend fun sendRaw(command: String): CommandResult
+    suspend fun readInfo(): DeviceInfo
+    suspend fun readTouchSignal(): Int
+    suspend fun readChoiceSignal(): ChoiceSignal
 
     override fun close()
 }
@@ -22,6 +27,7 @@ internal class UsbTabySession(
     override val device: DeviceInfo,
 ) : TabySession {
     override val transport = TabyTransport.USB
+    private val mutex = Mutex()
 
     override suspend fun play(animation: Animation): CommandResult = when (animation) {
         is Animation.Once    -> play(animation.raw)
@@ -40,7 +46,16 @@ internal class UsbTabySession(
     }
 
     override suspend fun sendRaw(command: String): CommandResult =
-        withContext(Dispatchers.IO) { usbSession.sendCommand(command) }
+        mutex.withLock { withContext(Dispatchers.IO) { usbSession.sendCommand(command) } }
+
+    override suspend fun readInfo(): DeviceInfo =
+        mutex.withLock { withContext(Dispatchers.IO) { usbSession.readInfoDirect() } }
+
+    override suspend fun readTouchSignal(): Int =
+        mutex.withLock { withContext(Dispatchers.IO) { usbSession.readTouchSignalDirect() } }
+
+    override suspend fun readChoiceSignal(): ChoiceSignal =
+        mutex.withLock { withContext(Dispatchers.IO) { usbSession.readChoiceSignalDirect() } }
 
     override fun close() = usbSession.close()
 }
@@ -68,6 +83,9 @@ internal class WifiTabySession(
     }
 
     override suspend fun sendRaw(command: String) = wifiClient.sendCommand(command)
+    override suspend fun readInfo(): DeviceInfo = wifiClient.readHealth()
+    override suspend fun readTouchSignal(): Int = wifiClient.readTouchSignal()
+    override suspend fun readChoiceSignal(): ChoiceSignal = wifiClient.readChoiceSignal()
 
     override fun close() {}
 }

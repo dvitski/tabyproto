@@ -3,12 +3,16 @@ package cc.dvitski.tabyproto
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -19,27 +23,14 @@ import java.io.Closeable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * Discovers Taby devices on USB and WiFi, tracks their liveness, and owns
- * one [TabySession] per device.
- *
- * - USB: polls the serial port list every [usbPollInterval]. A new port is
- *   probed once with `INFO`; afterwards presence in the list is the liveness
- *   signal (an open session holds the port, so it must never be re-probed).
- * - WiFi: every [wifiPollInterval], each known host (manual + mDNS-discovered)
- *   is health-checked via `GET /v1/health`.
- * - Sessions: [session] returns a cached session per device, created lazily
- *   and closed automatically when the device goes offline or on [close].
- *   Callers must never close a session obtained here.
- *
- * Construct via the companion `invoke` (real hardware/network), then [start].
- */
 class TabyDeviceMonitor internal constructor(
     initialManualHosts: List<String>,
     private val usbPollInterval: Duration,
     private val wifiPollInterval: Duration,
+    private val eventPollInterval: Duration = 500.milliseconds,
     private val portLister: () -> List<UsbPortRef>,
     private val usbProber: suspend (portName: String) -> DeviceInfo,
     private val healthChecker: suspend (host: String) -> DeviceInfo,
@@ -59,10 +50,13 @@ class TabyDeviceMonitor internal constructor(
     )
     val manualHosts: StateFlow<List<String>> = _manualHosts.asStateFlow()
 
-    // Never pruned by design — mDNS removal events are ignored; the health poll is the
-    // source of truth for offline, and entries are bounded by hosts seen on the LAN.
+    private val _events = MutableSharedFlow<TabyEvent>()
+    val events: SharedFlow<TabyEvent> = _events.asSharedFlow()
+
+    private val listeners = CopyOnWriteArraySet<TabyEventListener>()
+    private val pollJobs = ConcurrentHashMap<String, Job>()
+
     private val mdnsHosts = CopyOnWriteArraySet<String>()
-    // Confined to the USB poll coroutine — plain mutable set is safe (no cross-coroutine access).
     private val nonTabyPorts = mutableSetOf<String>()
 
     private val sessions = ConcurrentHashMap<String, TabySession>()
@@ -72,9 +66,18 @@ class TabyDeviceMonitor internal constructor(
     private var started = false
     private var mdnsBrowser: Closeable? = null
 
+    // ── Listener API ───────────────────────────────────────────────────────────
+
+    fun addListener(listener: TabyEventListener) { listeners.add(listener) }
+    fun removeListener(listener: TabyEventListener) { listeners.remove(listener) }
+
+    private fun emitEvent(event: TabyEvent) {
+        scope.launch { _events.emit(event) }
+        listeners.forEach { runCatching { it.onEvent(event) } }
+    }
+
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-    /** Starts the discovery loops. Idempotent. */
     fun start() {
         if (started) return
         started = true
@@ -86,25 +89,17 @@ class TabyDeviceMonitor internal constructor(
         }
         scope.launch {
             while (true) {
-                try {
-                    pollUsbOnce()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logger.warn("USB poll failed", e)
-                }
+                try { pollUsbOnce() }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { logger.warn("USB poll failed", e) }
                 delay(usbPollInterval)
             }
         }
         scope.launch {
             while (true) {
-                try {
-                    pollWifiOnce()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logger.warn("WiFi poll failed", e)
-                }
+                try { pollWifiOnce() }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { logger.warn("WiFi poll failed", e) }
                 delay(wifiPollInterval)
             }
         }
@@ -116,6 +111,7 @@ class TabyDeviceMonitor internal constructor(
         runCatching { mdnsBrowser?.close() }
         sessions.values.forEach { runCatching { it.close() } }
         sessions.clear()
+        pollJobs.clear()
     }
 
     // ── Manual hosts ───────────────────────────────────────────────────────────
@@ -129,7 +125,6 @@ class TabyDeviceMonitor internal constructor(
         _manualHosts.update { if (cleaned in it) it else it + cleaned }
     }
 
-    /** The device entry disappears on the next WiFi poll (≤ [wifiPollInterval]). */
     fun removeManualHost(host: String) {
         val cleaned = normalizeHost(host)
         _manualHosts.update { it - cleaned }
@@ -144,7 +139,6 @@ class TabyDeviceMonitor internal constructor(
     internal suspend fun pollUsbOnce() {
         val present = portLister()
         val presentNames = present.map { it.portName }.toSet()
-        // A vanished port may get a different device plugged in — forget its probe verdict.
         nonTabyPorts.retainAll(presentNames)
 
         _devices.value.forEach { device ->
@@ -183,11 +177,10 @@ class TabyDeviceMonitor internal constructor(
     // ── WiFi polling ───────────────────────────────────────────────────────────
 
     internal suspend fun pollWifiOnce() {
-        val hosts = LinkedHashMap<String, Boolean>() // host -> isManual
+        val hosts = LinkedHashMap<String, Boolean>()
         _manualHosts.value.forEach { hosts[it] = true }
         mdnsHosts.forEach { hosts.putIfAbsent(it, false) }
 
-        // Entries whose manual host was removed (and isn't mDNS-known) get dropped.
         _devices.value.forEach { device ->
             val src = device.source
             if (src is DeviceSource.Wifi && src.host !in hosts) {
@@ -203,13 +196,10 @@ class TabyDeviceMonitor internal constructor(
 
     private suspend fun checkWifiHost(host: String, manual: Boolean) {
         val id = "wifi:$host"
-        val info = try {
-            healthChecker(host)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
-        }
+        val info = try { healthChecker(host) }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) { null }
+
         if (info != null) {
             upsert(
                 TabyDevice(
@@ -243,11 +233,6 @@ class TabyDeviceMonitor internal constructor(
 
     // ── Sessions ───────────────────────────────────────────────────────────────
 
-    /**
-     * Returns the cached session for [device], creating it if needed.
-     * Throws [IllegalStateException] if the device is currently offline.
-     * Sessions are owned by the monitor — do not close them.
-     */
     suspend fun session(device: TabyDevice): TabySession =
         sessionMutex.withLock {
             check(!closed) { "monitor is closed" }
@@ -265,41 +250,110 @@ class TabyDeviceMonitor internal constructor(
         }
 
     private suspend fun evictSession(id: String) {
+        stopPolling(id)
         sessionMutex.withLock {
             sessions.remove(id)?.let { runCatching { it.close() } }
         }
     }
 
-    /** Invoked when an open USB session's port reports device removal. */
     internal suspend fun onUsbSessionDisconnected(deviceId: String) {
         evictSession(deviceId)
         update(deviceId) { it.copy(online = false) }
     }
 
+    // ── Event polling ──────────────────────────────────────────────────────────
+
+    private fun startPolling(device: TabyDevice) {
+        pollJobs[device.id] = scope.launch {
+            var lastInfo: DeviceInfo? = null
+            var lastTouch: Int? = null
+            var lastChoice: ChoiceSignal? = null
+            var tick = 0
+            while (true) {
+                try {
+                    val current = _devices.value.firstOrNull { it.id == device.id }
+                        ?.takeIf { it.online } ?: break
+                    val s = session(current)
+
+                    val touch = s.readTouchSignal()
+                    if (touch != lastTouch) {
+                        emitEvent(TabyEvent.TouchSignal(current, touch))
+                        lastTouch = touch
+                    }
+
+                    val choice = s.readChoiceSignal()
+                    if (choice != lastChoice) {
+                        emitEvent(TabyEvent.ChoiceSelected(current, choice.signal, choice.selection))
+                        lastChoice = choice
+                    }
+
+                    if (tick % 10 == 0) {
+                        val info = s.readInfo()
+                        diffInfo(current, lastInfo, info)
+                        lastInfo = info
+                    }
+                    tick++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) { /* device offline or transient error — retry */ }
+                delay(eventPollInterval)
+            }
+        }
+    }
+
+    private fun stopPolling(id: String) {
+        pollJobs.remove(id)?.cancel()
+    }
+
+    private fun diffInfo(device: TabyDevice, prev: DeviceInfo?, curr: DeviceInfo) {
+        if (prev != null && curr.state != prev.state)
+            emitEvent(TabyEvent.StateChanged(device, curr.state))
+        val bat = curr.batteryPercent
+        if (bat != null && prev != null && (bat != prev.batteryPercent || curr.externalPower != prev.externalPower))
+            emitEvent(TabyEvent.BatteryChanged(device, bat, curr.externalPower))
+        if (prev != null && (curr.wifiConnected != prev.wifiConnected || curr.ip != prev.ip))
+            emitEvent(TabyEvent.WifiChanged(device, curr.wifiConnected, curr.ip))
+        val bt = curr.bluetoothConnected
+        if (bt != null && prev != null && bt != prev.bluetoothConnected)
+            emitEvent(TabyEvent.BluetoothChanged(device, bt))
+    }
+
     // ── Registry helpers ───────────────────────────────────────────────────────
 
     private fun upsert(device: TabyDevice) {
+        val wasOnline = _devices.value.firstOrNull { it.id == device.id }?.online
         _devices.update { list ->
             (list.filterNot { it.id == device.id } + device).sortedWith(
                 compareBy({ it.transport != TabyTransport.USB }, { it.label })
             )
         }
+        if (device.online && wasOnline != true) {
+            emitEvent(TabyEvent.DeviceOnline(device))
+            startPolling(device)
+        }
     }
 
     private fun update(id: String, transform: (TabyDevice) -> TabyDevice) {
+        val wasOnline = _devices.value.firstOrNull { it.id == id }?.online
         _devices.update { list -> list.map { if (it.id == id) transform(it) else it } }
+        if (wasOnline == true) {
+            val current = _devices.value.firstOrNull { it.id == id }
+            if (current?.online == false) emitEvent(TabyEvent.DeviceOffline(current))
+        }
     }
 
     private fun remove(id: String) {
+        val device = _devices.value.firstOrNull { it.id == id }
         _devices.update { list -> list.filterNot { it.id == id } }
+        if (device?.online == true) emitEvent(TabyEvent.DeviceOffline(device))
     }
 
     companion object {
-        /** Creates a monitor wired to real USB serial ports, HTTP, and mDNS. */
         operator fun invoke(
             initialManualHosts: List<String> = emptyList(),
             usbPollInterval: Duration = 2.seconds,
             wifiPollInterval: Duration = 5.seconds,
+            eventPollInterval: Duration = 500.milliseconds,
         ): TabyDeviceMonitor {
             val usbClient = TabyUsbClient()
             val wifiClients = ConcurrentHashMap<String, TabyWifiClient>()
@@ -309,6 +363,7 @@ class TabyDeviceMonitor internal constructor(
                 initialManualHosts = initialManualHosts,
                 usbPollInterval = usbPollInterval,
                 wifiPollInterval = wifiPollInterval,
+                eventPollInterval = eventPollInterval,
                 portLister = {
                     usbClient.listCandidatePorts()
                         .map { UsbPortRef(it.systemPortName, it.descriptivePortName) }

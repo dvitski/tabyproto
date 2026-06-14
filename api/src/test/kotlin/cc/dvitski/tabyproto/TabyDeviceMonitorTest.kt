@@ -32,6 +32,9 @@ private class FakeSession(
     override suspend fun setBrightness(percent: Int) = sendRaw("BRIGHTNESS $percent")
     override suspend fun sendRaw(command: String) =
         CommandResult(true, transport, command, "TABY:OK", "fake")
+    override suspend fun readInfo(): DeviceInfo = device
+    override suspend fun readTouchSignal(): Int = 0
+    override suspend fun readChoiceSignal(): ChoiceSignal = ChoiceSignal(0, ChoiceSelection.NONE)
     override fun close() { closed = true }
 }
 

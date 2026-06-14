@@ -184,6 +184,18 @@ internal class TabyUsbClient {
                 if (ok) "USB command acknowledged: $rawResponse" else rawResponse)
         }
 
+        internal fun readInfoDirect(): DeviceInfo =
+            parseInfoResponse(sendCommand("INFO").rawResponse)
+
+        internal fun readTouchSignalDirect(): Int {
+            val raw = sendCommand("TOUCH_SIGNAL").rawResponse
+            return raw.trim().split(" ").last().toIntOrNull()
+                ?: throw IllegalStateException("Unexpected touch signal: $raw")
+        }
+
+        internal fun readChoiceSignalDirect(): ChoiceSignal =
+            parseChoiceSignalResponse(sendCommand("CHOICE_SIGNAL").rawResponse)
+
         override fun close() {
             logger.debug("  $portName closing session")
             port.removeDataListener()
