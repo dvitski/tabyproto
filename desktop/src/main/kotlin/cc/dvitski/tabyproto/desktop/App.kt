@@ -201,7 +201,8 @@ class AppState {
                 val device = if (id != null) devices.value.firstOrNull { it.id == id } else null
                 if (device != null) controller(device).currentAnimation else flowOf(null)
             }.collect { anim ->
-                _lastSent.value = if (anim == null || anim == Animations.IDLE_01_LOOP) null else anim
+                val idlePools = IdleScheduler.IDLE_POOL + IdleScheduler.RELAXED_POOL
+                _lastSent.value = if (anim == null || anim in idlePools) null else anim
             }
         }
         scope.launch {

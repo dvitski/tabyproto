@@ -37,11 +37,11 @@ class IdleScheduler(
 
     fun notifyActivity() {
         loopJob?.cancel()
-        loopJob = scope.launch {
+        scope.launch {
             onRestoreBrightness()
             onStopAnimation(AnimationPriority.IDLE)
-            runLoop()
         }
+        startLoop()
     }
 
     private fun startLoop() {
