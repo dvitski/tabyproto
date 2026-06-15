@@ -51,20 +51,22 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 @Composable
-fun MusicBlockAnimated(musicState: MusicState, onControl: (MediaControl) -> Unit) {
+fun MusicBlockAnimated(musicState: MusicState, onControl: (MediaControl, String?) -> Unit) {
+    val session = (musicState as? MusicState.Active)?.primary()
     AnimatedVisibility(
-        visible = musicState is MusicState.Playing,
+        visible = session != null,
         enter = slideInVertically { it },
         exit = slideOutVertically { it },
     ) {
-        if (musicState is MusicState.Playing) {
-            MusicBlock(state = musicState, onControl = onControl)
+        if (session != null) {
+            val appId = session.appId
+            MusicBlock(state = session, onControl = { control -> onControl(control, appId) })
         }
     }
 }
 
 @Composable
-private fun MusicBlock(state: MusicState.Playing, onControl: (MediaControl) -> Unit) {
+private fun MusicBlock(state: NowPlaying, onControl: (MediaControl) -> Unit) {
     val theme = LocalAppTheme.current
     val accent = theme.accent
 
@@ -139,8 +141,9 @@ private fun AlbumArt(uri: String?, accent: Color) {
                 }
             }
         }
-        if (bitmap != null) {
-            Image(bitmap!!, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(bmp, null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else {
             Icon(Icons.Rounded.MusicNote, null, tint = accent.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
         }

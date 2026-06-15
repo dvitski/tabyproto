@@ -1,13 +1,11 @@
 package cc.dvitski.tabyproto.desktop
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
 class MusicMonitor(private val scope: CoroutineScope) {
@@ -25,49 +23,45 @@ class MusicMonitor(private val scope: CoroutineScope) {
         }
     }
 
-    fun sendControl(control: MediaControl) {
-        val vk = when (control) {
-            MediaControl.PlayPause -> 0xB3
-            MediaControl.Next      -> 0xB0
-            MediaControl.Prev      -> 0xB1
+    fun sendControl(control: MediaControl, appId: String?) {
+        if (control == MediaControl.PlayPause) {
+            val current = _state.value
+            if (current is MusicState.Active) {
+                val sessions = current.sessions.toMutableList()
+                val idx = if (appId != null) sessions.indexOfFirst { it.appId == appId }
+                          else sessions.indexOfFirst { it.isPlaying }.takeIf { it >= 0 } ?: 0
+                if (idx in sessions.indices) {
+                    sessions[idx] = sessions[idx].copy(isPlaying = !sessions[idx].isPlaying)
+                    _state.value = current.copy(sessions = sessions)
+                }
+            }
         }
-        scope.launch(Dispatchers.IO) {
-            val exe = mediaKeyExe ?: return@launch
-            runCatching { ProcessBuilder(exe, "$vk").start().waitFor() }
+        if (appId == null) return
+        val command = when (control) {
+            MediaControl.PlayPause -> "toggle"
+            MediaControl.Next      -> "next"
+            MediaControl.Prev      -> "prev"
         }
+        scope.launch { poller.sendCommand(command, appId) }
     }
 
-    private val mediaKeyExe: String? by lazy { buildMediaKeyExe() }
-
-    private fun buildMediaKeyExe(): String? {
-        val cacheDir = File(System.getProperty("java.io.tmpdir"), "taby-smtc").also { it.mkdirs() }
-        val exe = File(cacheDir, "media_key.exe")
-        if (exe.exists()) return exe.absolutePath
-        val csc = """C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"""
-        if (!File(csc).exists()) return null
-        val src = MusicMonitor::class.java.getResourceAsStream("/media_key.cs") ?: return null
-        val srcFile = File(cacheDir, "media_key.cs").also { f -> src.use { s -> f.writeBytes(s.readBytes()) } }
-        ProcessBuilder(csc, "/nologo", "/target:exe", "/platform:x64",
-            "/out:${exe.absolutePath}", srcFile.absolutePath)
-            .redirectErrorStream(true).start()
-            .also { it.inputStream.bufferedReader().readText() }.waitFor()
-        return exe.takeIf { it.exists() }?.absolutePath
-    }
-
-    private fun SmtcPoller.SmtcResult.toMusicState(): MusicState = when (this) {
-        SmtcPoller.SmtcResult.Idle -> MusicState.Idle
-        is SmtcPoller.SmtcResult.Playing -> MusicState.Playing(
-            track        = title,
-            artist       = artist,
-            albumArtUri  = albumArtPath?.let { "file://$it" },
-            position     = positionMs.milliseconds,
-            duration     = durationMs?.takeIf { it > 0 }?.milliseconds,
-            source       = when {
-                appId?.contains("Spotify", ignoreCase = true) == true -> MusicSource.Spotify
-                appId?.contains("Tidal",   ignoreCase = true) == true -> MusicSource.Tidal
-                else -> MusicSource.Generic
-            },
-            isPlaying    = isPlaying,
-        )
+    private fun List<SmtcPoller.SmtcSession>.toMusicState(): MusicState {
+        if (isEmpty()) return MusicState.Idle
+        return MusicState.Active(map { s ->
+            NowPlaying(
+                track        = s.title,
+                artist       = s.artist,
+                albumArtUri  = s.albumArtPath?.let { "file://$it" },
+                position     = s.positionMs.milliseconds,
+                duration     = s.durationMs?.takeIf { it > 0 }?.milliseconds,
+                source       = when {
+                    s.appId?.contains("Spotify", ignoreCase = true) == true -> MusicSource.Spotify
+                    s.appId?.contains("Tidal",   ignoreCase = true) == true -> MusicSource.Tidal
+                    else -> MusicSource.Generic
+                },
+                isPlaying    = s.isPlaying,
+                appId        = s.appId,
+            )
+        })
     }
 }
