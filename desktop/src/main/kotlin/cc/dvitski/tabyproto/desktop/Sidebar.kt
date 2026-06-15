@@ -161,8 +161,8 @@ fun Sidebar(
         Box(Modifier.fillMaxWidth().height(1.dp).background(theme.sidebarText.copy(alpha = 0.12f)))
         Spacer(Modifier.height(6.dp))
 
-        NavItem(Icons.Rounded.Home, "Home", selectedScreen == Screen.Home, compact = compact) { onNavigate(Screen.Home) }
-        NavItem(Icons.Rounded.Settings, "Settings", selectedScreen is Screen.Settings, compact = compact) { onNavigate(Screen.Settings()) }
+        NavItem(Icons.Rounded.Home, "Home", selectedScreen == Screen.Home) { onNavigate(Screen.Home) }
+        NavItem(Icons.Rounded.Settings, "Settings", selectedScreen is Screen.Settings) { onNavigate(Screen.Settings()) }
 
         Spacer(Modifier.weight(1f))
 
@@ -278,8 +278,9 @@ fun Sidebar(
 }
 
 @Composable
-private fun NavItem(icon: ImageVector, label: String, selected: Boolean, compact: Boolean = false, onClick: () -> Unit) {
+private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     val theme = LocalAppTheme.current
+    val compact = LocalWindowSize.current == WindowSize.Compact
     val bgColor = if (selected) theme.accent.copy(alpha = 0.18f) else theme.sidebarBg
     val contentColor = if (selected) theme.accent else theme.sidebarText.copy(alpha = 0.65f)
 
