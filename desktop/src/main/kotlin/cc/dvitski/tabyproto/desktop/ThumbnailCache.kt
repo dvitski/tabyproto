@@ -26,7 +26,11 @@ class ThumbnailCache {
     fun preloadAll(animations: List<Animation>) {
         animations.forEach { animation ->
             scope.launch {
-                cache[animation] = extractFrame(animation.id)
+                // Only store a successful frame — ConcurrentHashMap rejects null values, and a
+                // null put here previously threw before the count was incremented, hanging the
+                // loading screen forever on the first missing/unreadable asset. A missing
+                // thumbnail now degrades to a blank tile (thumbnailFor returns null) instead.
+                runCatching { extractFrame(animation.id) }.getOrNull()?.let { cache[animation] = it }
                 _loadedCount.update { it + 1 }
             }
         }

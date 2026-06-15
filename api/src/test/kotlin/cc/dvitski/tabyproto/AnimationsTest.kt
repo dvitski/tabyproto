@@ -48,7 +48,11 @@ class AnimationsTest {
 
     @Test
     fun `no entry in all uses an _in id as its canonical id`() {
-        assertTrue(Animations.all.none { it.id.endsWith("_in") })
+        // `_in` ids are intro fragments referenced via Looping.intro, not catalog entries.
+        // taby_response_ready_in is the one intentional exception: it's registered standalone
+        // (unsupported as intro+loop on the device) and its asset is named taby_response_ready_in.
+        val unexpected = Animations.all.map { it.id }.filter { it.endsWith("_in") && it != "taby_response_ready_in" }
+        assertTrue(unexpected.isEmpty(), "unexpected _in canonical ids: $unexpected")
     }
 
     @Test

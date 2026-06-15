@@ -78,9 +78,11 @@ object Animations {
 
     // ── Unsupported as intro+loop on current device — registered separately ───
 
-    // Canonical id avoids the `_in` suffix (reserved for intro fragments, see AnimationsTest);
-    // the wire command still comes from raw = TABY_RESPONSE_READY_IN ("taby_response_ready_in").
-    val TABY_RESPONSE_READY_IN   = Animation.Once("taby_response_ready_intro", "Taby Response Ready In",   RawAnimation.TABY_RESPONSE_READY_IN)
+    // Canonical id must stay "taby_response_ready_in" to match its asset file
+    // (anim/taby_response_ready_in.mp4); thumbnails resolve by canonical id. This is the one
+    // intentional `_in` catalog entry (see AnimationsTest) — registered standalone because it
+    // isn't supported as intro+loop on the device.
+    val TABY_RESPONSE_READY_IN   = Animation.Once("taby_response_ready_in",   "Taby Response Ready In",   RawAnimation.TABY_RESPONSE_READY_IN)
     val TABY_RESPONSE_READY_LOOP = Animation.Looping("taby_response_ready_loop", "Taby Response Ready", intro = null, body = RawAnimation.TABY_RESPONSE_READY_LOOP)
 
     // ── Registry ───────────────────────────────────────────────────────────────
