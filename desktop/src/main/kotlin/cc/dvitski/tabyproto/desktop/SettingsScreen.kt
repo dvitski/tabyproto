@@ -3,12 +3,15 @@ package cc.dvitski.tabyproto.desktop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -88,40 +91,143 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
-    Row(modifier = modifier.fillMaxSize().background(theme.background)) {
-        Column(
-            modifier = Modifier.width(200.dp).fillMaxHeight().background(theme.surface).padding(vertical = 14.dp),
-        ) {
-            Text(
-                text = "SETTINGS",
-                color = theme.textSecondary,
-                fontSize = 12.sp,
-                letterSpacing = 1.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+    val windowSize = LocalWindowSize.current
+
+    if (windowSize == WindowSize.Compact) {
+        Column(modifier = modifier.fillMaxSize().background(theme.background)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.surface)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                SettingsCategory.entries.forEach { category ->
+                    CategoryItem(category.label, category == selectedCategory, modifier = Modifier.defaultMinSize(minWidth = 56.dp)) { onCategorySelect(category) }
+                }
+            }
+            CategoryContent(
+                selectedCategory = selectedCategory,
+                musicState = musicState,
+                onMusicControl = onMusicControl,
+                devices = devices,
+                activeDeviceId = activeDeviceId,
+                onSelectDevice = onSelectDevice,
+                onAddHost = onAddHost,
+                onRemoveHost = onRemoveHost,
+                brightness = brightness,
+                onBrightnessChange = onBrightnessChange,
+                animations = animations,
+                query = query,
+                onQueryChange = onQueryChange,
+                typeFilter = typeFilter,
+                onTypeFilterChange = onTypeFilterChange,
+                thumbnailCache = thumbnailCache,
+                sendingAnimation = sendingAnimation,
+                onSend = onSend,
+                isDark = isDark,
+                currentPalette = currentPalette,
+                onSetTheme = onSetTheme,
+                idleSettings = idleSettings,
+                onIdleSettingsChange = onIdleSettingsChange,
+                idleStatus = idleStatus,
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(20.dp),
             )
-            SettingsCategory.entries.forEach { category ->
-                CategoryItem(category.label, category == selectedCategory) { onCategorySelect(category) }
-            }
         }
-        Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(20.dp)) {
-            when (selectedCategory) {
-                SettingsCategory.Music -> MusicDetail(musicState, onMusicControl)
-                SettingsCategory.Voice -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
-                SettingsCategory.Device -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend)
-                SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme)
-                SettingsCategory.Idle -> IdleDetail(idleSettings, onIdleSettingsChange, idleStatus)
+    } else {
+        val navWidth = if (windowSize == WindowSize.Medium) 160.dp else 200.dp
+        Row(modifier = modifier.fillMaxSize().background(theme.background)) {
+            Column(
+                modifier = Modifier.width(navWidth).fillMaxHeight().background(theme.surface).padding(vertical = 14.dp),
+            ) {
+                Text(
+                    text = "SETTINGS",
+                    color = theme.textSecondary,
+                    fontSize = 12.sp,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+                SettingsCategory.entries.forEach { category ->
+                    CategoryItem(category.label, category == selectedCategory, modifier = Modifier.fillMaxWidth()) { onCategorySelect(category) }
+                }
             }
+            CategoryContent(
+                selectedCategory = selectedCategory,
+                musicState = musicState,
+                onMusicControl = onMusicControl,
+                devices = devices,
+                activeDeviceId = activeDeviceId,
+                onSelectDevice = onSelectDevice,
+                onAddHost = onAddHost,
+                onRemoveHost = onRemoveHost,
+                brightness = brightness,
+                onBrightnessChange = onBrightnessChange,
+                animations = animations,
+                query = query,
+                onQueryChange = onQueryChange,
+                typeFilter = typeFilter,
+                onTypeFilterChange = onTypeFilterChange,
+                thumbnailCache = thumbnailCache,
+                sendingAnimation = sendingAnimation,
+                onSend = onSend,
+                isDark = isDark,
+                currentPalette = currentPalette,
+                onSetTheme = onSetTheme,
+                idleSettings = idleSettings,
+                onIdleSettingsChange = onIdleSettingsChange,
+                idleStatus = idleStatus,
+                modifier = Modifier.weight(1f).fillMaxHeight().padding(20.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun CategoryItem(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun CategoryContent(
+    selectedCategory: SettingsCategory,
+    musicState: MusicState,
+    onMusicControl: (MediaControl, String?) -> Unit,
+    devices: List<cc.dvitski.tabyproto.TabyDevice>,
+    activeDeviceId: String?,
+    onSelectDevice: (String) -> Unit,
+    onAddHost: (String) -> Unit,
+    onRemoveHost: (String) -> Unit,
+    brightness: Int?,
+    onBrightnessChange: (Int) -> Unit,
+    animations: List<cc.dvitski.tabyproto.Animation>,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    typeFilter: AnimationTypeFilter,
+    onTypeFilterChange: (AnimationTypeFilter) -> Unit,
+    thumbnailCache: ThumbnailCache,
+    sendingAnimation: cc.dvitski.tabyproto.Animation?,
+    onSend: (cc.dvitski.tabyproto.Animation) -> Unit,
+    isDark: Boolean,
+    currentPalette: ColorPalette,
+    onSetTheme: (Boolean, ColorPalette) -> Unit,
+    idleSettings: IdleSettings,
+    onIdleSettingsChange: (IdleSettings) -> Unit,
+    idleStatus: IdleStatus,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        when (selectedCategory) {
+            SettingsCategory.Music      -> MusicDetail(musicState, onMusicControl)
+            SettingsCategory.Voice      -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
+            SettingsCategory.Device     -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend)
+            SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme)
+            SettingsCategory.Idle       -> IdleDetail(idleSettings, onIdleSettingsChange, idleStatus)
+        }
+    }
+}
+
+@Composable
+private fun CategoryItem(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val theme = LocalAppTheme.current
     Box(
-        modifier = Modifier
+        modifier = modifier
             .padding(horizontal = 8.dp, vertical = 2.dp)
-            .fillMaxWidth()
             .clip(AppItemShape)
             .background(if (selected) theme.accent.copy(alpha = 0.15f) else theme.surface)
             .clickable(onClick = onClick)
