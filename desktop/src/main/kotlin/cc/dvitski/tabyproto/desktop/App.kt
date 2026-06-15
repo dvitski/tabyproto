@@ -135,15 +135,17 @@ class AppState {
     private fun rampBrightness(target: Int, durationMs: Long) {
         rampJob?.cancel()
         rampJob = scope.launch {
-            val from = hwBrightness ?: target
-            val steps = (durationMs / 30L).toInt().coerceAtLeast(1)
-            for (i in 1..steps) {
-                val value = (from + (target - from).toFloat() * i / steps).toInt()
-                val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: break
-                if (!device.online) break
+            // When the hardware level is unknown, send the target once to sync it.
+            // Otherwise emit a de-duplicated ramp — crucially empty when already at
+            // target, so we don't flood the device with redundant BRIGHTNESS commands.
+            val from = hwBrightness
+            val values = if (from == null) listOf(target) else brightnessRampSteps(from, target, durationMs)
+            values.forEachIndexed { i, value ->
+                val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: return@launch
+                if (!device.online) return@launch
                 runCatching { monitor.session(device).setBrightness(value) }
                 hwBrightness = value
-                if (i < steps) delay(30)
+                if (i < values.lastIndex) delay(30)
             }
         }
     }
