@@ -31,16 +31,23 @@ class TabyDeviceMonitor internal constructor(
     private val usbPollInterval: Duration,
     private val wifiPollInterval: Duration,
     private val eventPollInterval: Duration = 500.milliseconds,
+    // After this many consecutive failed poll exchanges, treat the device as gone. Covers a
+    // firmware wedge that keeps the USB port enumerated (so no OS disconnect event fires) —
+    // without it the loop would poll a dead device forever.
+    private val maxConsecutivePollFailures: Int = 3,
     private val portLister: () -> List<UsbPortRef>,
     private val usbProber: suspend (portName: String) -> DeviceInfo,
     private val healthChecker: suspend (host: String) -> DeviceInfo,
     private val usbSessionFactory: suspend (portName: String, info: DeviceInfo, onDisconnect: () -> Unit) -> TabySession,
     private val wifiSessionFactory: suspend (host: String, info: DeviceInfo) -> TabySession,
     private val mdnsBrowserFactory: (onCandidate: (String) -> Unit) -> Closeable?,
+    private val nowMs: () -> Long = { System.currentTimeMillis() },
+    // Injectable so tests can supply runTest's backgroundScope: background poll loops then run
+    // on virtual time (deterministic, auto-cancelled) instead of racing on real Default threads.
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : Closeable {
 
     private val logger = LoggerFactory.getLogger(TabyDeviceMonitor::class.java)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _devices = MutableStateFlow<List<TabyDevice>>(emptyList())
     val devices: StateFlow<List<TabyDevice>> = _devices.asStateFlow()
@@ -57,7 +64,13 @@ class TabyDeviceMonitor internal constructor(
     private val pollJobs = ConcurrentHashMap<String, Job>()
 
     private val mdnsHosts = CopyOnWriteArraySet<String>()
-    private val nonTabyPorts = mutableSetOf<String>()
+
+    // Ports that failed to probe as a Taby, each with an exponential backoff before the
+    // next retry. Unlike a permanent blacklist, this lets a port that was only transiently
+    // silent — a device still booting, or one recovered after a reset/replug — reconnect on
+    // its own, while still not re-probing genuine non-Taby ports on every poll.
+    // Accessed only from the single USB poll coroutine, so no synchronization is needed.
+    private val probeBackoff = mutableMapOf<String, ProbeBackoff>()
 
     private val sessions = ConcurrentHashMap<String, TabySession>()
     private val sessionMutex = Mutex()
@@ -139,7 +152,7 @@ class TabyDeviceMonitor internal constructor(
     internal suspend fun pollUsbOnce() {
         val present = portLister()
         val presentNames = present.map { it.portName }.toSet()
-        nonTabyPorts.retainAll(presentNames)
+        probeBackoff.keys.retainAll(presentNames)
 
         _devices.value.forEach { device ->
             val src = device.source
@@ -155,7 +168,9 @@ class TabyDeviceMonitor internal constructor(
         }
 
         for (ref in present) {
-            if (ref.portName in nonTabyPorts) continue
+            // Skip a previously-failed port until its backoff window elapses, then retry.
+            val backoff = probeBackoff[ref.portName]
+            if (backoff != null && nowMs() < backoff.nextAttemptAt) continue
             val id = "usb:${ref.portName}"
             if (_devices.value.firstOrNull { it.id == id }?.online == true) continue
 
@@ -179,14 +194,16 @@ class TabyDeviceMonitor internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Only blacklist ports that were never confirmed as a Taby device.
-                // Known devices (info != null) stay visible as offline so reconnect attempts are visible.
-                if (_devices.value.firstOrNull { it.id == id }?.info == null) {
-                    nonTabyPorts.add(ref.portName)
-                    remove(id)
-                }
+                // Back off before retrying a port that didn't answer as a Taby. Known devices
+                // (info != null) stay visible as offline so reconnect attempts remain visible;
+                // never-confirmed ports are removed from the list until the next retry.
+                val b = probeBackoff.getOrPut(ref.portName) { ProbeBackoff() }
+                b.failures++
+                b.nextAttemptAt = nowMs() + backoffDelayMs(b.failures)
+                if (_devices.value.firstOrNull { it.id == id }?.info == null) remove(id)
                 continue
             }
+            probeBackoff.remove(ref.portName)
             upsert(
                 TabyDevice(
                     id = id,
@@ -198,6 +215,15 @@ class TabyDeviceMonitor internal constructor(
                 )
             )
         }
+    }
+
+    /** Per-port retry state: how many times probing failed and when to try again. */
+    private class ProbeBackoff(var failures: Int = 0, var nextAttemptAt: Long = 0L)
+
+    /** Exponential backoff (3s, 6s, 12s, 24s, …) capped so a recovered device reconnects within ~30s. */
+    private fun backoffDelayMs(failures: Int): Long {
+        val shift = (failures - 1).coerceIn(0, 10)
+        return (PROBE_BACKOFF_BASE_MS shl shift).coerceAtMost(PROBE_BACKOFF_MAX_MS)
     }
 
     // ── WiFi polling ───────────────────────────────────────────────────────────
@@ -295,6 +321,7 @@ class TabyDeviceMonitor internal constructor(
             var lastTouch: Int? = null
             var lastChoice: ChoiceSignal? = null
             var tick = 0
+            var consecutiveFailures = 0
             while (true) {
                 try {
                     val current = _devices.value.firstOrNull { it.id == device.id }
@@ -319,9 +346,22 @@ class TabyDeviceMonitor internal constructor(
                         lastInfo = info
                     }
                     tick++
+                    consecutiveFailures = 0
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) { /* device offline or transient error — retry */ }
+                } catch (_: Exception) {
+                    // A brief hiccup is fine — retry. But if the device stops answering entirely
+                    // (a firmware wedge with the USB port still enumerated, so no disconnect event
+                    // ever fires), drop it offline so discovery can re-probe and reconnect instead
+                    // of polling a dead device forever. We close the session and mark it offline
+                    // inline rather than via evictSession(), whose stopPolling() would cancel this
+                    // very coroutine mid-cleanup; breaking out lets the loop end naturally.
+                    if (++consecutiveFailures >= maxConsecutivePollFailures) {
+                        sessionMutex.withLock { sessions.remove(device.id)?.let { runCatching { it.close() } } }
+                        update(device.id) { it.copy(online = false) }
+                        break
+                    }
+                }
                 delay(eventPollInterval)
             }
         }
@@ -375,6 +415,9 @@ class TabyDeviceMonitor internal constructor(
     }
 
     companion object {
+        private const val PROBE_BACKOFF_BASE_MS = 3_000L
+        private const val PROBE_BACKOFF_MAX_MS = 30_000L
+
         operator fun invoke(
             initialManualHosts: List<String> = emptyList(),
             usbPollInterval: Duration = 2.seconds,

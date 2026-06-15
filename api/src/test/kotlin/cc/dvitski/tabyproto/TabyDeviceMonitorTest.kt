@@ -1,5 +1,8 @@
 package cc.dvitski.tabyproto
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,30 +29,37 @@ private class FakeSession(
     override val device: DeviceInfo,
 ) : TabySession {
     var closed = false
+    // When true, every read times out — simulates a device that has wedged but kept its USB
+    // port enumerated (no OS disconnect event), exactly the LVGL-lock hang seen in the field.
+    var failReads = false
     override suspend fun play(animation: Animation) = sendRaw(animation.id)
     override suspend fun play(raw: RawAnimation) = sendRaw(raw.id)
     override suspend fun play(command: AnimationCommand) = sendRaw(command.toWireString())
     override suspend fun setBrightness(percent: Int) = sendRaw("BRIGHTNESS $percent")
     override suspend fun sendRaw(command: String) =
         CommandResult(true, transport, command, "TABY:OK", "fake")
-    override suspend fun readInfo(): DeviceInfo = device
-    override suspend fun readTouchSignal(): Int = 0
-    override suspend fun readChoiceSignal(): ChoiceSignal = ChoiceSignal(0, ChoiceSelection.NONE)
+    override suspend fun readInfo(): DeviceInfo = if (failReads) throw RuntimeException("wedged") else device
+    override suspend fun readTouchSignal(): Int = if (failReads) throw RuntimeException("wedged") else 0
+    override suspend fun readChoiceSignal(): ChoiceSignal =
+        if (failReads) throw RuntimeException("wedged") else ChoiceSignal(0, ChoiceSelection.NONE)
     override fun close() { closed = true }
 }
 
-private class Harness(manualHosts: List<String> = emptyList()) {
+private class Harness(manualHosts: List<String> = emptyList(), scope: CoroutineScope) {
     var ports: List<UsbPortRef> = emptyList()
     val probeResults = mutableMapOf<String, DeviceInfo>()
     val healthResults = mutableMapOf<String, DeviceInfo>()
     val probeCalls = mutableListOf<String>()
     val sessions = mutableListOf<FakeSession>()
+    var now = 0L  // controllable clock for backoff tests
 
     val monitor = TabyDeviceMonitor(
         initialManualHosts = manualHosts,
         usbPollInterval = 2.seconds,
         wifiPollInterval = 5.seconds,
+        scope = scope,
         portLister = { ports },
+        nowMs = { now },
         usbProber = { port ->
             probeCalls += port
             probeResults[port] ?: error("no taby on $port")
@@ -70,11 +80,16 @@ private class Harness(manualHosts: List<String> = emptyList()) {
 
 class TabyDeviceMonitorTest {
 
+    // Build a Harness whose monitor runs background coroutines on runTest's backgroundScope —
+    // deterministic virtual time, cancelled automatically when the test ends.
+    private fun TestScope.harness(manualHosts: List<String> = emptyList()) =
+        Harness(manualHosts, backgroundScope)
+
     // ── USB discovery & liveness ───────────────────────────────────────────────
 
     @Test
     fun `new taby port is probed and registered online`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
 
@@ -89,7 +104,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `device label prefers mdns host over port name`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1", mdnsHost = "taby.local")
 
@@ -100,7 +115,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `non-taby port is probed once and then skipped while present`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM3", "Some Modem (COM3)"))
         // no probeResults entry → prober throws
 
@@ -113,7 +128,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `online device is not re-probed while its port stays present`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
 
@@ -125,7 +140,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `vanished port marks device offline`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -139,7 +154,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `reappeared port is re-probed and comes back online`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -156,7 +171,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `vanished non-taby port is re-probed when it returns`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM3", "Some Modem (COM3)"))
         h.monitor.pollUsbOnce()           // probe fails → cached as non-Taby
         h.ports = emptyList()
@@ -170,11 +185,47 @@ class TabyDeviceMonitorTest {
         assertEquals(listOf("COM3", "COM3"), h.probeCalls)
     }
 
+    @Test
+    fun `silent port is retried after backoff and reconnects when it recovers`() = runTest {
+        val h = harness()
+        h.ports = listOf(UsbPortRef("COM9", "USB Serial (COM9)"))
+        // First poll: device is silent (no probeResults) → probe fails, backoff scheduled.
+        h.monitor.pollUsbOnce()
+        assertNull(h.device("usb:COM9"))
+        assertEquals(listOf("COM9"), h.probeCalls)
+
+        // Still within the backoff window → not re-probed.
+        h.now += 1_000
+        h.monitor.pollUsbOnce()
+        assertEquals(listOf("COM9"), h.probeCalls)
+
+        // Backoff elapsed and the device has recovered (e.g. after a reset) → re-probed, online.
+        h.now += 5_000
+        h.probeResults["COM9"] = fakeInfo("taby-9")
+        h.monitor.pollUsbOnce()
+
+        assertTrue(h.device("usb:COM9")!!.online)
+        assertEquals(listOf("COM9", "COM9"), h.probeCalls)
+    }
+
+    @Test
+    fun `repeated failures back off exponentially`() = runTest {
+        val h = harness()
+        h.ports = listOf(UsbPortRef("COM3", "Some Modem (COM3)"))  // never a Taby
+
+        h.monitor.pollUsbOnce()                       // probe #1, backoff 3s
+        h.now += 3_000; h.monitor.pollUsbOnce()       // probe #2, backoff 6s
+        h.now += 3_000; h.monitor.pollUsbOnce()       // still within 6s → skipped
+        h.now += 3_000; h.monitor.pollUsbOnce()       // probe #3 (6s elapsed)
+
+        assertEquals(listOf("COM3", "COM3", "COM3"), h.probeCalls)
+    }
+
     // ── Initial manual hosts normalization ─────────────────────────────────────
 
     @Test
     fun `initial manual hosts are normalized and deduped on construction`() = runTest {
-        val h = Harness(manualHosts = listOf("http://taby.local/", "https://taby.local", " taby.local "))
+        val h = harness(manualHosts = listOf("http://taby.local/", "https://taby.local", " taby.local "))
 
         assertEquals(listOf("taby.local"), h.monitor.manualHosts.value)
     }
@@ -183,7 +234,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `reachable manual host is registered online`() = runTest {
-        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        val h = harness(manualHosts = listOf("192.168.1.50"))
         h.healthResults["192.168.1.50"] = fakeInfo("taby-w", mdnsHost = "taby.local")
 
         h.monitor.pollWifiOnce()
@@ -197,7 +248,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `unreachable manual host appears as offline entry and is retried`() = runTest {
-        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        val h = harness(manualHosts = listOf("192.168.1.50"))
 
         h.monitor.pollWifiOnce()
         assertFalse(h.device("wifi:192.168.1.50")!!.online)
@@ -210,7 +261,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `online wifi device flips offline when health check fails`() = runTest {
-        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        val h = harness(manualHosts = listOf("192.168.1.50"))
         h.healthResults["192.168.1.50"] = fakeInfo("taby-w")
         h.monitor.pollWifiOnce()
 
@@ -222,7 +273,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `addManualHost normalizes and dedupes`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.monitor.addManualHost(" http://taby.local/ ")
         h.monitor.addManualHost("taby.local")
         h.monitor.addManualHost("   ")
@@ -233,7 +284,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `removed manual host disappears from devices on next poll`() = runTest {
-        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        val h = harness(manualHosts = listOf("192.168.1.50"))
         h.healthResults["192.168.1.50"] = fakeInfo("taby-w")
         h.monitor.pollWifiOnce()
 
@@ -245,7 +296,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `mdns candidate host is polled and registered as non-manual`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.monitor.onMdnsCandidate("192.168.1.77")
         h.healthResults["192.168.1.77"] = fakeInfo("taby-m")
 
@@ -259,7 +310,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `host added both manually and via mdns retains manual flag`() = runTest {
-        val h = Harness(manualHosts = listOf("192.168.1.77"))
+        val h = harness(manualHosts = listOf("192.168.1.77"))
         h.monitor.onMdnsCandidate("192.168.1.77")
         h.healthResults["192.168.1.77"] = fakeInfo("taby-m")
 
@@ -272,7 +323,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `session is cached per device`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -287,7 +338,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `session for offline device throws`() = runTest {
-        val h = Harness(manualHosts = listOf("192.168.1.50"))
+        val h = harness(manualHosts = listOf("192.168.1.50"))
         h.monitor.pollWifiOnce()  // unreachable → offline entry
         val device = h.device("wifi:192.168.1.50")!!
 
@@ -296,7 +347,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `session is closed and evicted when device goes offline`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -311,7 +362,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `new session is created after device comes back online`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -329,7 +380,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `close closes all cached sessions`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -344,7 +395,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `usb disconnect event marks device offline and closes session`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -358,8 +409,45 @@ class TabyDeviceMonitorTest {
     }
 
     @Test
+    fun `wedged device whose commands stop responding is marked offline`() = runTest {
+        val h = harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val device = h.device("usb:COM5")!!
+        val session = h.monitor.session(device) as FakeSession
+        assertTrue(h.device("usb:COM5")!!.online)
+
+        // The device wedges with its USB port still present: every poll command now fails.
+        session.failReads = true
+        advanceTimeBy(60_000)
+
+        assertFalse(h.device("usb:COM5")!!.online)
+        assertTrue(session.closed)
+    }
+
+    @Test
+    fun `transient poll failures that recover do not mark the device offline`() = runTest {
+        val h = harness()
+        h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
+        h.probeResults["COM5"] = fakeInfo("taby-1")
+        h.monitor.pollUsbOnce()
+        val device = h.device("usb:COM5")!!
+        val session = h.monitor.session(device) as FakeSession
+
+        // A short blip (fewer failures than the threshold) followed by recovery must not evict it.
+        session.failReads = true
+        advanceTimeBy(600)        // at the 500ms cadence this is at most 2 failed polls (< 3)
+        session.failReads = false
+        advanceTimeBy(10_000)     // keep polling successfully
+
+        assertTrue(h.device("usb:COM5")!!.online)
+        assertFalse(session.closed)
+    }
+
+    @Test
     fun `usb disconnect event is idempotent`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
@@ -375,7 +463,7 @@ class TabyDeviceMonitorTest {
 
     @Test
     fun `session created after disconnect reconnect works`() = runTest {
-        val h = Harness()
+        val h = harness()
         h.ports = listOf(UsbPortRef("COM5", "USB Serial (COM5)"))
         h.probeResults["COM5"] = fakeInfo("taby-1")
         h.monitor.pollUsbOnce()
