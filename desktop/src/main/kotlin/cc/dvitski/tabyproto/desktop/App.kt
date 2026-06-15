@@ -108,6 +108,10 @@ class AppState {
     val idleSettings: StateFlow<IdleSettings> = _idleSettings.asStateFlow()
     val idleStatus: StateFlow<IdleStatus> get() = idleScheduler.status
 
+    private val generalStore = GeneralStore()
+    private val _minimizeToTray = MutableStateFlow(generalStore.loadMinimizeToTray())
+    val minimizeToTray: StateFlow<Boolean> = _minimizeToTray.asStateFlow()
+
     private val _brightness = MutableStateFlow<Int?>(null)
     val brightness: StateFlow<Int?> = _brightness.asStateFlow()
     private var brightnessJob: Job? = null
@@ -152,6 +156,11 @@ class AppState {
     fun updateIdleSettings(s: IdleSettings) {
         _idleSettings.value = s
         idleStore.save(s)
+    }
+
+    fun setMinimizeToTray(enabled: Boolean) {
+        _minimizeToTray.value = enabled
+        generalStore.saveMinimizeToTray(enabled)
     }
 
     init {
@@ -328,6 +337,7 @@ fun App(appState: AppState) {
         val musicState by appState.musicState.collectAsState()
         val idleSettings by appState.idleSettings.collectAsState()
         val idleStatus by appState.idleStatus.collectAsState()
+        val minimizeToTray by appState.minimizeToTray.collectAsState()
         val total = appState.totalAnimations
         val thumbnailsReady = loadedCount >= total
         val snackbarHostState = remember { SnackbarHostState() }
@@ -415,6 +425,8 @@ fun App(appState: AppState) {
                                         isDark = isDark,
                                         currentPalette = palette,
                                         onSetTheme = appState::setTheme,
+                                        minimizeToTray = minimizeToTray,
+                                        onSetMinimizeToTray = appState::setMinimizeToTray,
                                         brightness = brightness,
                                         onBrightnessChange = appState::setBrightness,
                                         musicState = musicState,

@@ -1,5 +1,8 @@
 package cc.dvitski.tabyproto.desktop
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,9 +16,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Icon
 import androidx.compose.material.Slider
@@ -32,6 +37,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,6 +87,8 @@ fun SettingsScreen(
     isDark: Boolean,
     currentPalette: ColorPalette,
     onSetTheme: (Boolean, ColorPalette) -> Unit,
+    minimizeToTray: Boolean,
+    onSetMinimizeToTray: (Boolean) -> Unit,
     brightness: Int?,
     onBrightnessChange: (Int) -> Unit,
     musicState: MusicState,
@@ -129,6 +137,8 @@ fun SettingsScreen(
                 isDark = isDark,
                 currentPalette = currentPalette,
                 onSetTheme = onSetTheme,
+                minimizeToTray = minimizeToTray,
+                onSetMinimizeToTray = onSetMinimizeToTray,
                 idleSettings = idleSettings,
                 onIdleSettingsChange = onIdleSettingsChange,
                 idleStatus = idleStatus,
@@ -174,6 +184,8 @@ fun SettingsScreen(
                 isDark = isDark,
                 currentPalette = currentPalette,
                 onSetTheme = onSetTheme,
+                minimizeToTray = minimizeToTray,
+                onSetMinimizeToTray = onSetMinimizeToTray,
                 idleSettings = idleSettings,
                 onIdleSettingsChange = onIdleSettingsChange,
                 idleStatus = idleStatus,
@@ -206,6 +218,8 @@ private fun CategoryContent(
     isDark: Boolean,
     currentPalette: ColorPalette,
     onSetTheme: (Boolean, ColorPalette) -> Unit,
+    minimizeToTray: Boolean,
+    onSetMinimizeToTray: (Boolean) -> Unit,
     idleSettings: IdleSettings,
     onIdleSettingsChange: (IdleSettings) -> Unit,
     idleStatus: IdleStatus,
@@ -216,7 +230,7 @@ private fun CategoryContent(
             SettingsCategory.Music      -> MusicDetail(musicState, onMusicControl)
             SettingsCategory.Voice      -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
             SettingsCategory.Device     -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend)
-            SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme)
+            SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme, minimizeToTray, onSetMinimizeToTray)
             SettingsCategory.Idle       -> IdleDetail(idleSettings, onIdleSettingsChange, idleStatus)
         }
     }
@@ -444,7 +458,13 @@ private fun DeviceDetail(
 }
 
 @Composable
-private fun AppearanceDetail(isDark: Boolean, currentPalette: ColorPalette, onSetTheme: (Boolean, ColorPalette) -> Unit) {
+private fun AppearanceDetail(
+    isDark: Boolean,
+    currentPalette: ColorPalette,
+    onSetTheme: (Boolean, ColorPalette) -> Unit,
+    minimizeToTray: Boolean,
+    onSetMinimizeToTray: (Boolean) -> Unit,
+) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text("Appearance", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -465,6 +485,47 @@ private fun AppearanceDetail(isDark: Boolean, currentPalette: ColorPalette, onSe
                 }
             }
         }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("MINIMIZE TO TRAY", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+            TogglePill(checked = minimizeToTray, onCheckedChange = onSetMinimizeToTray)
+        }
+    }
+}
+
+@Composable
+private fun TogglePill(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val theme = LocalAppTheme.current
+    val trackWidth = 48.dp
+    val trackHeight = 28.dp
+    val thumbSize = 22.dp
+    val thumbPadding = 3.dp
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) trackWidth - thumbSize - thumbPadding else thumbPadding,
+        animationSpec = tween(150),
+    )
+    val trackColor by animateColorAsState(
+        targetValue = if (checked) theme.accent else theme.textSecondary.copy(alpha = 0.3f),
+        animationSpec = tween(150),
+    )
+    Box(
+        modifier = modifier
+            .size(trackWidth, trackHeight)
+            .clip(CircleShape)
+            .background(trackColor)
+            .clickable { onCheckedChange(!checked) },
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset, y = thumbPadding)
+                .size(thumbSize)
+                .clip(CircleShape)
+                .background(Color.White),
+        )
     }
 }
 
@@ -550,12 +611,13 @@ private fun IdleDetail(
             onChange = { onChange(settings.copy(relaxedThresholdSec = it)) },
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text("BRIGHTNESS DIM", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModeButton("On",  settings.dimEnabled,  Modifier.weight(1f)) { onChange(settings.copy(dimEnabled = true)) }
-                ModeButton("Off", !settings.dimEnabled, Modifier.weight(1f)) { onChange(settings.copy(dimEnabled = false)) }
-            }
+            TogglePill(checked = settings.dimEnabled, onCheckedChange = { onChange(settings.copy(dimEnabled = it)) })
         }
 
         if (settings.dimEnabled) {
