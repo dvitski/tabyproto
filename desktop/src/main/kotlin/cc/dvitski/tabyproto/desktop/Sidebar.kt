@@ -126,134 +126,151 @@ fun Sidebar(
         }
     }
 
+    val windowSize = LocalWindowSize.current
+    val sidebarWidth = when (windowSize) {
+        WindowSize.Compact  -> 56.dp
+        WindowSize.Medium   -> 180.dp
+        WindowSize.Expanded -> 200.dp
+    }
+    val compact = windowSize == WindowSize.Compact
+
     Column(
         modifier = modifier
-            .width(200.dp)
+            .width(sidebarWidth)
             .fillMaxHeight()
             .background(theme.sidebarBg),
         horizontalAlignment = Alignment.Start,
     ) {
-        Text(
-            text = "TABYPROTO",
-            color = theme.accent,
-            fontSize = 19.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            modifier = Modifier.padding(start = 18.dp, top = 24.dp, bottom = 16.dp),
-        )
+        if (compact) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("T", color = theme.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            Text(
+                text = "TABYPROTO",
+                color = theme.accent,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(start = 18.dp, top = 24.dp, bottom = 16.dp),
+            )
+        }
         Box(Modifier.fillMaxWidth().height(1.dp).background(theme.sidebarText.copy(alpha = 0.12f)))
         Spacer(Modifier.height(6.dp))
 
-        NavItem(Icons.Rounded.Home, "Home", selectedScreen == Screen.Home) { onNavigate(Screen.Home) }
-        NavItem(Icons.Rounded.Settings, "Settings", selectedScreen is Screen.Settings) { onNavigate(Screen.Settings()) }
+        NavItem(Icons.Rounded.Home, "Home", selectedScreen == Screen.Home, compact = compact) { onNavigate(Screen.Home) }
+        NavItem(Icons.Rounded.Settings, "Settings", selectedScreen is Screen.Settings, compact = compact) { onNavigate(Screen.Settings()) }
 
         Spacer(Modifier.weight(1f))
 
-        val active = devices.firstOrNull { it.id == activeDeviceId }
-        val online = active?.online == true
-        val blockBorder = theme.sidebarText.copy(alpha = 0.20f)
+        if (!compact) {
+            val active = devices.firstOrNull { it.id == activeDeviceId }
+            val online = active?.online == true
+            val blockBorder = theme.sidebarText.copy(alpha = 0.20f)
 
-        // Device block
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 10.dp)
-                .fillMaxWidth()
-                .clip(AppItemShape)
-                .border(1.dp, blockBorder, AppItemShape)
-                .clickable { onNavigate(Screen.Settings(SettingsCategory.Device)) }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Rounded.DeviceHub, contentDescription = null, tint = theme.sidebarText.copy(alpha = 0.4f), modifier = Modifier.size(15.dp))
-                Text("DEVICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 11.sp, letterSpacing = 1.sp)
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.3f)))
-                Text(
-                    text = when (active?.transport) {
-                        TabyTransport.USB -> "USB"; TabyTransport.WIFI -> "WiFi"; TabyTransport.BLUETOOTH -> "BT"; null -> "—"
-                    },
-                    fontSize = 13.sp,
-                    color = if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.4f),
-                )
-            }
-            if (videoVisible) {
-                VideoPlayerSurface(
-                    playerState = playerState,
-                    modifier = Modifier.fillMaxWidth().height(72.dp).clip(AppItemShape),
-                    contentScale = ContentScale.Fit,
-                )
-            } else {
-                Text(
-                    text = lastSent?.displayName ?: if (active != null) "connected" else "no device",
-                    fontSize = 12.sp,
-                    color = theme.sidebarText.copy(alpha = 0.3f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (online) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Icon(
-                        Icons.Rounded.Brightness6,
-                        contentDescription = null,
-                        tint = theme.sidebarText.copy(alpha = 0.4f),
-                        modifier = Modifier.size(13.dp),
-                    )
-                    Slider(
-                        value = (brightness ?: 100).toFloat() / 100f,
-                        onValueChange = { onBrightnessChange((it * 100).roundToInt().coerceIn(0, 100)) },
-                        modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(
-                            thumbColor = theme.accent,
-                            activeTrackColor = theme.accent,
-                            inactiveTrackColor = theme.sidebarText.copy(alpha = 0.2f),
-                        ),
+            // Device block
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 10.dp)
+                    .fillMaxWidth()
+                    .clip(AppItemShape)
+                    .border(1.dp, blockBorder, AppItemShape)
+                    .clickable { onNavigate(Screen.Settings(SettingsCategory.Device)) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Rounded.DeviceHub, contentDescription = null, tint = theme.sidebarText.copy(alpha = 0.4f), modifier = Modifier.size(15.dp))
+                    Text("DEVICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 11.sp, letterSpacing = 1.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.3f)))
+                    Text(
+                        text = when (active?.transport) {
+                            TabyTransport.USB -> "USB"; TabyTransport.WIFI -> "WiFi"; TabyTransport.BLUETOOTH -> "BT"; null -> "—"
+                        },
+                        fontSize = 13.sp,
+                        color = if (online) theme.onlineGreen else theme.sidebarText.copy(alpha = 0.4f),
                     )
                 }
+                if (videoVisible) {
+                    VideoPlayerSurface(
+                        playerState = playerState,
+                        modifier = Modifier.fillMaxWidth().height(72.dp).clip(AppItemShape),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
+                    Text(
+                        text = lastSent?.displayName ?: if (active != null) "connected" else "no device",
+                        fontSize = 12.sp,
+                        color = theme.sidebarText.copy(alpha = 0.3f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (online) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Brightness6,
+                            contentDescription = null,
+                            tint = theme.sidebarText.copy(alpha = 0.4f),
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Slider(
+                            value = (brightness ?: 100).toFloat() / 100f,
+                            onValueChange = { onBrightnessChange((it * 100).roundToInt().coerceIn(0, 100)) },
+                            modifier = Modifier.weight(1f),
+                            colors = SliderDefaults.colors(
+                                thumbColor = theme.accent,
+                                activeTrackColor = theme.accent,
+                                inactiveTrackColor = theme.sidebarText.copy(alpha = 0.2f),
+                            ),
+                        )
+                    }
+                }
             }
-        }
 
-        Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(6.dp))
+            MusicBlockAnimated(musicState = musicState, onControl = onMusicControl)
+            if (musicState is MusicState.Active) Spacer(Modifier.height(6.dp))
 
-        MusicBlockAnimated(musicState = musicState, onControl = onMusicControl)
-
-        if (musicState is MusicState.Active) Spacer(Modifier.height(6.dp))
-
-        // Voice block
-        val voiceActive = listeningState != ListeningState.Idle
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 10.dp)
-                .fillMaxWidth()
-                .clip(AppItemShape)
-                .border(1.dp, if (voiceActive) theme.accent else blockBorder, AppItemShape)
-                .clickable(onClick = onVoiceClick)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Rounded.Mic, contentDescription = null,
-                    tint = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.4f),
-                    modifier = Modifier.size(15.dp))
-                Text("VOICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 11.sp, letterSpacing = 1.sp)
+            // Voice block
+            val voiceActive = listeningState != ListeningState.Idle
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 10.dp)
+                    .fillMaxWidth()
+                    .clip(AppItemShape)
+                    .border(1.dp, if (voiceActive) theme.accent else blockBorder, AppItemShape)
+                    .clickable(onClick = onVoiceClick)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Rounded.Mic, contentDescription = null,
+                        tint = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.4f),
+                        modifier = Modifier.size(15.dp))
+                    Text("VOICE", color = theme.sidebarText.copy(alpha = 0.4f), fontSize = 11.sp, letterSpacing = 1.sp)
+                }
+                Text(
+                    text = when (listeningState) {
+                        ListeningState.Idle -> "Ready"
+                        ListeningState.WakeWordDetected -> "Wake word"
+                        ListeningState.Listening -> "Listening…"
+                        ListeningState.Responding -> "Responding"
+                    },
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.5f),
+                )
             }
-            Text(
-                text = when (listeningState) {
-                    ListeningState.Idle -> "Ready"
-                    ListeningState.WakeWordDetected -> "Wake word"
-                    ListeningState.Listening -> "Listening…"
-                    ListeningState.Responding -> "Responding"
-                },
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (voiceActive) theme.accent else theme.sidebarText.copy(alpha = 0.5f),
-            )
         }
 
         Spacer(Modifier.height(12.dp))
@@ -261,23 +278,25 @@ fun Sidebar(
 }
 
 @Composable
-private fun NavItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+private fun NavItem(icon: ImageVector, label: String, selected: Boolean, compact: Boolean = false, onClick: () -> Unit) {
     val theme = LocalAppTheme.current
     val bgColor = if (selected) theme.accent.copy(alpha = 0.18f) else theme.sidebarBg
     val contentColor = if (selected) theme.accent else theme.sidebarText.copy(alpha = 0.65f)
 
     Row(
         modifier = Modifier
-            .padding(horizontal = 10.dp)
+            .padding(horizontal = if (compact) 4.dp else 10.dp)
             .fillMaxWidth()
             .clip(AppItemShape)
             .background(bgColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
+            .padding(horizontal = if (compact) 0.dp else 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = if (compact) Arrangement.Center else Arrangement.spacedBy(12.dp),
     ) {
         Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
-        Text(label, fontSize = 16.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = contentColor)
+        if (!compact) {
+            Text(label, fontSize = 16.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = contentColor)
+        }
     }
 }
