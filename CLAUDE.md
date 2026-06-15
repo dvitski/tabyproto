@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> **Default branch:** `latest` (not `master`). After committing on `master`, merge into `latest` and push: `git checkout latest && git merge --ff-only master && git push origin latest`.
+
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build and Run Commands
