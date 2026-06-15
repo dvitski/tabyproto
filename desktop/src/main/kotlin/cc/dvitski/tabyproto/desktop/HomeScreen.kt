@@ -70,9 +70,17 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         DevicePanel(devices, activeDeviceId, lastSent, brightness, onBrightnessChange, Modifier.fillMaxWidth())
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MusicPanel(musicState, onMusicControl, Modifier.weight(1f))
-            MobilePanel(Modifier.weight(1f))
+        val windowSize = LocalWindowSize.current
+        if (windowSize == WindowSize.Expanded) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MusicPanel(musicState, onMusicControl, Modifier.weight(1f))
+                MobilePanel(Modifier.weight(1f))
+            }
+        } else {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                MusicPanel(musicState, onMusicControl, Modifier.fillMaxWidth())
+                MobilePanel(Modifier.fillMaxWidth())
+            }
         }
     }
 }
