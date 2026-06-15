@@ -218,4 +218,110 @@ class IdleSchedulerTest {
             assertFalse(requested[i] == requested[i - 1], "Repeated animation at index $i: ${requested[i].id}")
         }
     }
+
+    @Test
+    fun `forceRelaxed sends a relaxed animation immediately`() = runTest {
+        val requested = mutableListOf<Animation>()
+        val settings = MutableStateFlow(IdleSettings(
+            variationIntervalSec = 60,
+            relaxedThresholdSec  = 600,
+            dimEnabled           = false,
+        ))
+        val scheduler = IdleScheduler(
+            scope                = backgroundScope,
+            settings             = settings,
+            onRequestAnimation   = { anim, _ -> requested += anim },
+            onStopAnimation      = {},
+            onOverrideBrightness = {},
+            onRestoreBrightness  = {},
+            getSavedBrightness   = { 100 },
+        )
+
+        scheduler.forceRelaxed()
+        advanceTimeBy(1L) // dispatch the immediate send, no interval wait
+
+        assertEquals(1, requested.size)
+        assertTrue(requested[0] in IdleScheduler.RELAXED_POOL)
+    }
+
+    @Test
+    fun `forceRelaxed keeps pool relaxed even before relaxedThresholdSec`() = runTest {
+        val requested = mutableListOf<Animation>()
+        val settings = MutableStateFlow(IdleSettings(
+            variationIntervalSec = 60,
+            relaxedThresholdSec  = 600, // would be IDLE pool if not forced
+            dimEnabled           = false,
+        ))
+        val scheduler = IdleScheduler(
+            scope                = backgroundScope,
+            settings             = settings,
+            onRequestAnimation   = { anim, _ -> requested += anim },
+            onStopAnimation      = {},
+            onOverrideBrightness = {},
+            onRestoreBrightness  = {},
+            getSavedBrightness   = { 100 },
+        )
+
+        scheduler.forceRelaxed()
+        advanceTimeBy(180_001L) // immediate + 3 interval ticks, all well under 600s
+
+        assertTrue(requested.isNotEmpty())
+        assertTrue(requested.all { it in IdleScheduler.RELAXED_POOL },
+            "expected all relaxed, got ${requested.map { it.id }}")
+    }
+
+    @Test
+    fun `forceRelaxed does not dim early - dim clock is preserved`() = runTest {
+        val brightnesses = mutableListOf<Int>()
+        val settings = MutableStateFlow(IdleSettings(
+            variationIntervalSec = 60,
+            relaxedThresholdSec  = 600,
+            dimEnabled           = true,
+            dimDelayThresholdSec = 120, // dim only after 120s of real inactivity
+            dimFloorPercent      = 20,
+        ))
+        val scheduler = IdleScheduler(
+            scope                = backgroundScope,
+            settings             = settings,
+            onRequestAnimation   = { _, _ -> },
+            onStopAnimation      = {},
+            onOverrideBrightness = { brightnesses += it },
+            onRestoreBrightness  = {},
+            getSavedBrightness   = { 100 },
+        )
+
+        scheduler.forceRelaxed() // elapsed is still 0 → no dim yet
+        advanceTimeBy(60_001L)   // immediate send + one 60s tick: elapsed=60 < 120
+
+        assertTrue(brightnesses.isEmpty(), "dim must not be fast-forwarded by lock")
+    }
+
+    @Test
+    fun `notifyActivity exits forced mode and returns to idle pool`() = runTest {
+        val requested = mutableListOf<Animation>()
+        val settings = MutableStateFlow(IdleSettings(
+            variationIntervalSec = 60,
+            relaxedThresholdSec  = 600,
+            dimEnabled           = false,
+        ))
+        val scheduler = IdleScheduler(
+            scope                = backgroundScope,
+            settings             = settings,
+            onRequestAnimation   = { anim, _ -> requested += anim },
+            onStopAnimation      = {},
+            onOverrideBrightness = {},
+            onRestoreBrightness  = {},
+            getSavedBrightness   = { 100 },
+        )
+
+        scheduler.forceRelaxed()
+        advanceTimeBy(1L)
+        scheduler.notifyActivity() // unlock
+        requested.clear()
+        advanceTimeBy(60_001L) // one tick after unlock, elapsed=60 < 600 → IDLE pool
+
+        assertTrue(requested.isNotEmpty())
+        assertTrue(requested.all { it in IdleScheduler.IDLE_POOL },
+            "expected idle pool after unlock, got ${requested.map { it.id }}")
+    }
 }
