@@ -32,7 +32,9 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,9 +81,10 @@ fun SettingsScreen(
     brightness: Int?,
     onBrightnessChange: (Int) -> Unit,
     musicState: MusicState,
-    onMusicControl: (MediaControl) -> Unit,
+    onMusicControl: (MediaControl, String?) -> Unit,
     idleSettings: IdleSettings,
     onIdleSettingsChange: (IdleSettings) -> Unit,
+    idleStatus: IdleStatus,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
@@ -106,7 +109,7 @@ fun SettingsScreen(
                 SettingsCategory.Voice -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
                 SettingsCategory.Device -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend)
                 SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme)
-                SettingsCategory.Idle -> IdleDetail(idleSettings, onIdleSettingsChange)
+                SettingsCategory.Idle -> IdleDetail(idleSettings, onIdleSettingsChange, idleStatus)
             }
         }
     }
@@ -165,35 +168,42 @@ private fun TypeFilterChip(
 }
 
 @Composable
-private fun MusicDetail(state: MusicState, onControl: (MediaControl) -> Unit) {
+private fun MusicDetail(state: MusicState, onControl: (MediaControl, String?) -> Unit) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("Music", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         when (state) {
             MusicState.Idle -> Text("No music playing", color = theme.textSecondary, fontSize = 15.sp)
-            is MusicState.Playing -> MusicSessionDetail(state = state, onControl = onControl)
+            is MusicState.Active -> {
+                Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    state.sessions.forEach { session ->
+                        val appId = session.appId
+                        MusicSessionDetail(session = session, onControl = { c -> onControl(c, appId) })
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun MusicSessionDetail(state: MusicState.Playing, onControl: (MediaControl) -> Unit) {
+private fun MusicSessionDetail(session: NowPlaying, onControl: (MediaControl) -> Unit) {
     val theme = LocalAppTheme.current
     val accent = theme.accent
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        val sourceName = when (state.source) { MusicSource.Spotify -> "Spotify"; MusicSource.Tidal -> "Tidal"; else -> "Music" }
-        Text(sourceName, color = if (state.isPlaying) accent else theme.textSecondary,
+        val sourceName = when (session.source) { MusicSource.Spotify -> "Spotify"; MusicSource.Tidal -> "Tidal"; else -> "Music" }
+        Text(sourceName, color = if (session.isPlaying) accent else theme.textSecondary,
             fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
         Row(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MusicDetailAlbumArt(uri = state.albumArtUri, accent = accent)
+            MusicDetailAlbumArt(uri = session.albumArtUri, accent = accent)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(state.track ?: "Unknown", color = theme.textPrimary, fontSize = 18.sp,
+                Text(session.track ?: "Unknown", color = theme.textPrimary, fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold, maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text(state.artist ?: "", color = theme.textSecondary, fontSize = 15.sp,
+                Text(session.artist ?: "", color = theme.textSecondary, fontSize = 15.sp,
                     maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
         }
@@ -202,7 +212,7 @@ private fun MusicSessionDetail(state: MusicState.Playing, onControl: (MediaContr
                 Icon(Icons.Rounded.SkipPrevious, "Prev", tint = theme.textSecondary, modifier = Modifier.size(28.dp))
             }
             androidx.compose.material.IconButton(onClick = { onControl(MediaControl.PlayPause) }) {
-                Icon(if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "PlayPause",
+                Icon(if (session.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "PlayPause",
                     tint = accent, modifier = Modifier.size(32.dp))
             }
             androidx.compose.material.IconButton(onClick = { onControl(MediaControl.Next) }) {
@@ -394,10 +404,27 @@ private fun formatSeconds(secs: Int): String = when {
 }
 
 @Composable
-private fun IdleDetail(settings: IdleSettings, onChange: (IdleSettings) -> Unit) {
+private fun IdleDetail(
+    settings: IdleSettings,
+    onChange: (IdleSettings) -> Unit,
+    status: IdleStatus,
+    clock: () -> Long = { System.currentTimeMillis() },
+) {
     val theme = LocalAppTheme.current
+    var now by remember { mutableLongStateOf(clock()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            now = clock()
+        }
+    }
+    val elapsedSec = ((now - status.lastActivityAt) / 1000L).coerceAtLeast(0L)
+    val countdownSec = ((status.nextAnimAt - now) / 1000L).coerceAtLeast(0L)
+
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Text("Idle", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+
+        IdleStatusCard(status, elapsedSec, countdownSec)
 
         IdleSlider(
             label    = "ANIMATION INTERVAL",
@@ -443,6 +470,48 @@ private fun IdleDetail(settings: IdleSettings, onChange: (IdleSettings) -> Unit)
                 format   = { "$it%" },
                 onChange = { onChange(settings.copy(dimFloorPercent = it)) },
             )
+        }
+    }
+}
+
+@Composable
+private fun IdleStatusCard(status: IdleStatus, elapsedSec: Long, countdownSec: Long) {
+    val theme = LocalAppTheme.current
+    val isActive = status.phase == IdlePhase.Active
+    val phaseColor = if (isActive) theme.textSecondary else theme.accent
+    val phaseLabel = when (status.phase) {
+        IdlePhase.Active   -> "Active"
+        IdlePhase.Idle     -> "Idle · ${formatSeconds(elapsedSec.toInt())}"
+        IdlePhase.Relaxed  -> "Relaxed · ${formatSeconds(elapsedSec.toInt())}"
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppItemShape)
+            .border(1.dp, theme.border, AppItemShape)
+            .background(theme.surface2)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("STATUS", color = theme.textSecondary, fontSize = 11.sp, letterSpacing = 0.8.sp)
+        Text("● $phaseLabel", color = phaseColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("ANIMATION", color = theme.textSecondary, fontSize = 11.sp, letterSpacing = 0.8.sp)
+                Text(status.currentAnimation?.displayName ?: "—", color = theme.textPrimary, fontSize = 13.sp)
+            }
+            if (!isActive) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("NEXT IN", color = theme.textSecondary, fontSize = 11.sp, letterSpacing = 0.8.sp)
+                    Text(formatSeconds(countdownSec.toInt()), color = theme.textPrimary, fontSize = 13.sp)
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("DIM BRIGHTNESS", color = theme.textSecondary, fontSize = 11.sp, letterSpacing = 0.8.sp)
+            Text(if (status.dimBrightness != null) "${status.dimBrightness}%" else "—", color = theme.textPrimary, fontSize = 13.sp)
         }
     }
 }

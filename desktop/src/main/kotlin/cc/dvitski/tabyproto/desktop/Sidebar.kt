@@ -60,7 +60,7 @@ fun Sidebar(
     onBrightnessChange: (Int) -> Unit,
     onNavigate: (Screen) -> Unit,
     onVoiceClick: () -> Unit,
-    onMusicControl: (MediaControl) -> Unit,
+    onMusicControl: (MediaControl, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
@@ -223,7 +223,7 @@ fun Sidebar(
 
         MusicBlockAnimated(musicState = musicState, onControl = onMusicControl)
 
-        if (musicState is MusicState.Playing) Spacer(Modifier.height(6.dp))
+        if (musicState is MusicState.Active) Spacer(Modifier.height(6.dp))
 
         // Voice block
         val voiceActive = listeningState != ListeningState.Idle

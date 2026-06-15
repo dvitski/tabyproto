@@ -29,6 +29,7 @@ import cc.dvitski.tabyproto.AnimationPriority
 import cc.dvitski.tabyproto.Animations
 import cc.dvitski.tabyproto.TabyDevice
 import cc.dvitski.tabyproto.TabyDeviceMonitor
+import cc.dvitski.tabyproto.TabyEvent
 import cc.dvitski.tabyproto.TabyTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -102,10 +105,13 @@ class AppState {
     private val idleStore = IdleStore()
     private val _idleSettings = MutableStateFlow(idleStore.load())
     val idleSettings: StateFlow<IdleSettings> = _idleSettings.asStateFlow()
+    val idleStatus: StateFlow<IdleStatus> get() = idleScheduler.status
 
     private val _brightness = MutableStateFlow<Int?>(null)
     val brightness: StateFlow<Int?> = _brightness.asStateFlow()
     private var brightnessJob: Job? = null
+    private var rampJob: Job? = null
+    @Volatile private var hwBrightness: Int? = null
 
     fun navigate(screen: Screen) { _selectedScreen.value = screen }
     fun showVoiceOverlay() { _voiceOverlayVisible.value = true }
@@ -116,9 +122,23 @@ class AppState {
         brightnessJob?.cancel()
         brightnessJob = scope.launch {
             delay(100)
-            val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: return@launch
-            if (!device.online) return@launch
-            runCatching { monitor.session(device).setBrightness(percent) }
+            rampBrightness(percent, durationMs = 600)
+        }
+    }
+
+    private fun rampBrightness(target: Int, durationMs: Long) {
+        rampJob?.cancel()
+        rampJob = scope.launch {
+            val from = hwBrightness ?: target
+            val steps = (durationMs / 30L).toInt().coerceAtLeast(1)
+            for (i in 1..steps) {
+                val value = (from + (target - from).toFloat() * i / steps).toInt()
+                val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: break
+                if (!device.online) break
+                runCatching { monitor.session(device).setBrightness(value) }
+                hwBrightness = value
+                if (i < steps) delay(30)
+            }
         }
     }
 
@@ -155,24 +175,18 @@ class AppState {
                     }
                 }
             },
-            onOverrideBrightness = { percent ->
-                _activeDeviceId.value?.let { id ->
-                    devices.value.firstOrNull { it.id == id && it.online }?.let { device ->
-                        runCatching { monitor.session(device).setBrightness(percent) }
-                    }
-                }
-            },
-            onRestoreBrightness = {
-                _brightness.value?.let { saved ->
-                    _activeDeviceId.value?.let { id ->
-                        devices.value.firstOrNull { it.id == id && it.online }?.let { device ->
-                            runCatching { monitor.session(device).setBrightness(saved) }
-                        }
-                    }
-                }
-            },
+            onOverrideBrightness = { percent -> rampBrightness(percent, durationMs = 1500) },
+            onRestoreBrightness = { _brightness.value?.let { rampBrightness(it, durationMs = 800) } },
             getSavedBrightness = { _brightness.value },
         )
+        scope.launch {
+            monitor.events.collect { event ->
+                if (event is TabyEvent.TouchSignal && event.signal != 0 &&
+                    event.device.id == _activeDeviceId.value) {
+                    idleScheduler.notifyActivity()
+                }
+            }
+        }
         scope.launch(Dispatchers.IO) { monitor.manualHosts.collect { hostsStore.save(it) } }
         scope.launch {
             monitor.devices.collect { list ->
@@ -191,6 +205,17 @@ class AppState {
             _activeDeviceId.collect { id ->
                 val polled = devices.value.firstOrNull { it.id == id }?.info?.brightnessPercent
                 if (_brightness.value == null) _brightness.value = polled
+                hwBrightness = polled
+            }
+        }
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        scope.launch {
+            _activeDeviceId.flatMapLatest { id ->
+                val device = if (id != null) devices.value.firstOrNull { it.id == id } else null
+                if (device != null) controller(device).currentAnimation else flowOf(null)
+            }.collect { anim ->
+                val idlePools = IdleScheduler.IDLE_POOL + IdleScheduler.RELAXED_POOL
+                _lastSent.value = if (anim == null || anim in idlePools) null else anim
             }
         }
         scope.launch {
@@ -201,8 +226,9 @@ class AppState {
                     MusicState.Idle -> {
                         controller(device).cancel(AnimationPriority.MUSIC)
                         controller(device).stop(AnimationPriority.MUSIC)
+                        controller(device).request(AnimationPriority.IDLE, IdleScheduler.IDLE_POOL.random(), null, preempt = false)
                     }
-                    is MusicState.Playing -> if (state.isPlaying) {
+                    is MusicState.Active -> if (state.primary().isPlaying) {
                         idleScheduler.notifyActivity()
                         controller(device).request(
                             priority   = AnimationPriority.MUSIC,
@@ -213,6 +239,7 @@ class AppState {
                     } else {
                         controller(device).cancel(AnimationPriority.MUSIC)
                         controller(device).stop(AnimationPriority.MUSIC)
+                        controller(device).request(AnimationPriority.IDLE, IdleScheduler.IDLE_POOL.random(), null, preempt = false)
                     }
                 }
             }
@@ -220,8 +247,8 @@ class AppState {
         scope.launch {
             while (true) {
                 delay(2_000)
-                val playing = musicMonitor.state.value as? MusicState.Playing
-                if (playing == null || !playing.isPlaying) continue
+                val active = musicMonitor.state.value as? MusicState.Active
+                if (active == null || !active.primary().isPlaying) continue
                 val id = _activeDeviceId.value ?: continue
                 val device = devices.value.firstOrNull { it.id == id && it.online } ?: continue
                 controller(device).request(
@@ -259,7 +286,6 @@ class AppState {
                 durationMs = AnimationResources.durations[introOrBody],
                 preempt   = true,
             )
-            _lastSent.value = animation
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -268,7 +294,7 @@ class AppState {
         }
     }
 
-    fun sendMusicControl(control: MediaControl) = musicMonitor.sendControl(control)
+    fun sendMusicControl(control: MediaControl, appId: String?) = musicMonitor.sendControl(control, appId)
 
     private suspend fun controller(device: TabyDevice): AnimationController {
         controllers[device.id]?.let { return it }
@@ -299,6 +325,7 @@ fun App(appState: AppState) {
         val brightness by appState.brightness.collectAsState()
         val musicState by appState.musicState.collectAsState()
         val idleSettings by appState.idleSettings.collectAsState()
+        val idleStatus by appState.idleStatus.collectAsState()
         val total = appState.totalAnimations
         val thumbnailsReady = loadedCount >= total
         val snackbarHostState = remember { SnackbarHostState() }
@@ -390,6 +417,7 @@ fun App(appState: AppState) {
                                     onMusicControl = appState::sendMusicControl,
                                     idleSettings = idleSettings,
                                     onIdleSettingsChange = appState::updateIdleSettings,
+                                    idleStatus = idleStatus,
                                 )
                             }
                         }
