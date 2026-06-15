@@ -6,7 +6,9 @@ import cc.dvitski.tabyproto.Animations
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class IdleScheduler(
@@ -17,6 +19,7 @@ class IdleScheduler(
     private val onOverrideBrightness: suspend (Int) -> Unit,
     private val onRestoreBrightness: suspend () -> Unit,
     private val getSavedBrightness: () -> Int?,
+    private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
     internal companion object {
         val IDLE_POOL = listOf(
@@ -33,10 +36,14 @@ class IdleScheduler(
 
     private var loopJob: Job? = null
 
+    private val _status = MutableStateFlow(IdleStatus(IdlePhase.Active, clock(), null, null, 0L))
+    val status: StateFlow<IdleStatus> = _status.asStateFlow()
+
     init { startLoop() }
 
     fun notifyActivity() {
         loopJob?.cancel()
+        _status.value = IdleStatus(IdlePhase.Active, clock(), null, null, 0L)
         scope.launch {
             onRestoreBrightness()
             onStopAnimation(AnimationPriority.IDLE)
@@ -53,6 +60,7 @@ class IdleScheduler(
         var lastAnim: Animation? = null
         while (true) {
             val s = settings.value
+            _status.value = _status.value.copy(nextAnimAt = clock() + s.variationIntervalSec * 1000L)
             delay(s.variationIntervalSec * 1000L)
             elapsedSec += s.variationIntervalSec
             val pool = if (elapsedSec >= s.relaxedThresholdSec) RELAXED_POOL else IDLE_POOL
@@ -60,6 +68,8 @@ class IdleScheduler(
             val next = candidates.randomOrNull() ?: pool.random()
             lastAnim = next
             onRequestAnimation(next, AnimationPriority.IDLE)
+            val phase = if (elapsedSec >= s.relaxedThresholdSec) IdlePhase.Relaxed else IdlePhase.Idle
+            val dimBrightness: Int?
             if (s.dimEnabled && elapsedSec >= s.dimDelayThresholdSec) {
                 val saved = getSavedBrightness() ?: 100
                 val floor = s.dimFloorPercent.coerceAtMost(saved)
@@ -68,7 +78,17 @@ class IdleScheduler(
                 val dimmed = (saved - (saved - floor) * progress)
                     .toInt().coerceAtLeast(floor)
                 onOverrideBrightness(dimmed)
+                dimBrightness = dimmed
+            } else {
+                dimBrightness = null
             }
+            _status.value = IdleStatus(
+                phase = phase,
+                lastActivityAt = _status.value.lastActivityAt,
+                currentAnimation = next,
+                dimBrightness = dimBrightness,
+                nextAnimAt = clock() + s.variationIntervalSec * 1000L,
+            )
         }
     }
 }
