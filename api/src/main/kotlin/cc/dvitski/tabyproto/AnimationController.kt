@@ -4,6 +4,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -19,6 +22,9 @@ class AnimationController(
     private var active: Active? = null
     private var expiryJob: Job? = null
     private val pending = sortedMapOf<Int, Pending>(reverseOrder())
+
+    private val _currentAnimation = MutableStateFlow<Animation?>(null)
+    val currentAnimation: StateFlow<Animation?> = _currentAnimation.asStateFlow()
 
     /** Returns true if the animation started playing immediately, false if queued. */
     suspend fun request(priority: Int, animation: Animation, durationMs: Long? = null, preempt: Boolean = true): Boolean {
@@ -59,6 +65,7 @@ class AnimationController(
             expiryJob?.cancel()
             active = null
             toPlay = advancePending()
+            if (toPlay == null) _currentAnimation.value = null
         }
         toPlay?.let { runCatching { session.play(it) } }
     }
@@ -70,6 +77,7 @@ class AnimationController(
     // Must be called while holding mutex
     private fun activate(priority: Int, animation: Animation, durationMs: Long?, now: Long) {
         val record = Active(priority, animation, now, durationMs).also { active = it }
+        _currentAnimation.value = animation
         expiryJob = if (durationMs != null) scope.launch {
             delay(durationMs)
             var toPlay: Animation? = null
@@ -77,6 +85,7 @@ class AnimationController(
                 if (active === record) {
                     active = null
                     toPlay = advancePending()
+                    if (toPlay == null) _currentAnimation.value = null
                 }
             }
             toPlay?.let { runCatching { session.play(it) } }
