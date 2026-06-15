@@ -64,6 +64,7 @@ class AppState {
     private val monitor = TabyDeviceMonitor(initialManualHosts = hostsStore.load())
     private val themeStore = ThemeStore()
     private val musicMonitor = MusicMonitor(scope)
+    private val lockMonitor = LockMonitor(scope)
     private val controllers = ConcurrentHashMap<String, AnimationController>()
     private lateinit var idleScheduler: IdleScheduler
 
@@ -198,6 +199,15 @@ class AppState {
                 }
             }
         }
+        lockMonitor.start()
+        scope.launch {
+            lockMonitor.events.collect { event ->
+                when (event) {
+                    LockEvent.Locked   -> idleScheduler.forceRelaxed()
+                    LockEvent.Unlocked -> idleScheduler.notifyActivity()
+                }
+            }
+        }
         scope.launch(Dispatchers.IO) { monitor.manualHosts.collect { hostsStore.save(it) } }
         scope.launch {
             monitor.devices.collect { list ->
@@ -313,7 +323,7 @@ class AppState {
             .also { controllers[device.id] = it }
     }
 
-    fun close() { scope.cancel(); monitor.close() }
+    fun close() { lockMonitor.close(); scope.cancel(); monitor.close() }
 }
 
 @Composable
