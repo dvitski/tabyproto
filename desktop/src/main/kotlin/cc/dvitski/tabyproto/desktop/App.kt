@@ -3,6 +3,7 @@ package cc.dvitski.tabyproto.desktop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -171,7 +172,8 @@ class AppState {
             onStopAnimation = { priority ->
                 _activeDeviceId.value?.let { id ->
                     devices.value.firstOrNull { it.id == id && it.online }?.let { device ->
-                        controller(device).stop(priority)
+                        val ctrl = controller(device)
+                        ctrl.stop(priority)
                     }
                 }
             },
@@ -341,93 +343,96 @@ fun App(appState: AppState) {
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize().background(theme.background)) {
-            if (!thumbnailsReady) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text = "LOADING $loadedCount / $total",
-                        color = theme.accent,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp,
-                    )
-                }
-            } else {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    Sidebar(
-                        selectedScreen = selectedScreen,
-                        devices = devices,
-                        activeDeviceId = activeDeviceId,
-                        lastSent = lastSent,
-                        listeningState = listeningState,
-                        musicState = musicState,
-                        brightness = brightness,
-                        onBrightnessChange = appState::setBrightness,
-                        onNavigate = appState::navigate,
-                        onVoiceClick = appState::showVoiceOverlay,
-                        onMusicControl = appState::sendMusicControl,
-                    )
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        when (val screen = selectedScreen) {
-                            Screen.Home -> HomeScreen(
-                                devices = devices,
-                                activeDeviceId = activeDeviceId,
-                                lastSent = lastSent,
-                                brightness = brightness,
-                                onBrightnessChange = appState::setBrightness,
-                                musicState = musicState,
-                                onMusicControl = appState::sendMusicControl,
-                            )
-                            is Screen.Settings -> {
-                                val filtered = Animations.all.filter { animation ->
-                                    (query.isBlank() || animation.id.contains(query, ignoreCase = true)) &&
-                                    when (typeFilter) {
-                                        AnimationTypeFilter.All       -> true
-                                        AnimationTypeFilter.Once      -> animation is Animation.Once
-                                        AnimationTypeFilter.Loop      -> animation is Animation.Looping && animation.intro == null
-                                        AnimationTypeFilter.IntroLoop -> animation is Animation.Looping && animation.intro != null
-                                    }
-                                }
-                                SettingsScreen(
-                                    selectedCategory = screen.category,
-                                    onCategorySelect = { appState.navigate(Screen.Settings(it)) },
-                                    animations = filtered,
-                                    query = query,
-                                    onQueryChange = appState::setQuery,
-                                    typeFilter = typeFilter,
-                                    onTypeFilterChange = appState::setTypeFilter,
-                                    thumbnailCache = appState.thumbnailCache,
-                                    sendingAnimation = sendingAnimation,
-                                    onSend = onSend,
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().background(theme.background)) {
+            val windowSize = windowSizeFor(maxWidth)
+            CompositionLocalProvider(LocalWindowSize provides windowSize) {
+                if (!thumbnailsReady) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = "LOADING $loadedCount / $total",
+                            color = theme.accent,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.sp,
+                        )
+                    }
+                } else {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        Sidebar(
+                            selectedScreen = selectedScreen,
+                            devices = devices,
+                            activeDeviceId = activeDeviceId,
+                            lastSent = lastSent,
+                            listeningState = listeningState,
+                            musicState = musicState,
+                            brightness = brightness,
+                            onBrightnessChange = appState::setBrightness,
+                            onNavigate = appState::navigate,
+                            onVoiceClick = appState::showVoiceOverlay,
+                            onMusicControl = appState::sendMusicControl,
+                        )
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            when (val screen = selectedScreen) {
+                                Screen.Home -> HomeScreen(
                                     devices = devices,
                                     activeDeviceId = activeDeviceId,
-                                    onSelectDevice = appState::selectDevice,
-                                    onAddHost = appState::addManualHost,
-                                    onRemoveHost = appState::removeManualHost,
-                                    isDark = isDark,
-                                    currentPalette = palette,
-                                    onSetTheme = appState::setTheme,
+                                    lastSent = lastSent,
                                     brightness = brightness,
                                     onBrightnessChange = appState::setBrightness,
                                     musicState = musicState,
                                     onMusicControl = appState::sendMusicControl,
-                                    idleSettings = idleSettings,
-                                    onIdleSettingsChange = appState::updateIdleSettings,
-                                    idleStatus = idleStatus,
                                 )
+                                is Screen.Settings -> {
+                                    val filtered = Animations.all.filter { animation ->
+                                        (query.isBlank() || animation.id.contains(query, ignoreCase = true)) &&
+                                        when (typeFilter) {
+                                            AnimationTypeFilter.All       -> true
+                                            AnimationTypeFilter.Once      -> animation is Animation.Once
+                                            AnimationTypeFilter.Loop      -> animation is Animation.Looping && animation.intro == null
+                                            AnimationTypeFilter.IntroLoop -> animation is Animation.Looping && animation.intro != null
+                                        }
+                                    }
+                                    SettingsScreen(
+                                        selectedCategory = screen.category,
+                                        onCategorySelect = { appState.navigate(Screen.Settings(it)) },
+                                        animations = filtered,
+                                        query = query,
+                                        onQueryChange = appState::setQuery,
+                                        typeFilter = typeFilter,
+                                        onTypeFilterChange = appState::setTypeFilter,
+                                        thumbnailCache = appState.thumbnailCache,
+                                        sendingAnimation = sendingAnimation,
+                                        onSend = onSend,
+                                        devices = devices,
+                                        activeDeviceId = activeDeviceId,
+                                        onSelectDevice = appState::selectDevice,
+                                        onAddHost = appState::addManualHost,
+                                        onRemoveHost = appState::removeManualHost,
+                                        isDark = isDark,
+                                        currentPalette = palette,
+                                        onSetTheme = appState::setTheme,
+                                        brightness = brightness,
+                                        onBrightnessChange = appState::setBrightness,
+                                        musicState = musicState,
+                                        onMusicControl = appState::sendMusicControl,
+                                        idleSettings = idleSettings,
+                                        onIdleSettingsChange = appState::updateIdleSettings,
+                                        idleStatus = idleStatus,
+                                    )
+                                }
                             }
                         }
                     }
+                    if (voiceOverlayVisible) {
+                        VoiceOverlay(listeningState = listeningState, onDismiss = appState::hideVoiceOverlay)
+                    }
                 }
-                if (voiceOverlayVisible) {
-                    VoiceOverlay(listeningState = listeningState, onDismiss = appState::hideVoiceOverlay)
-                }
+                SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
             }
-            SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
 }
