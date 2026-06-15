@@ -143,9 +143,14 @@ class TabyDeviceMonitor internal constructor(
 
         _devices.value.forEach { device ->
             val src = device.source
-            if (src is DeviceSource.Usb && src.portName !in presentNames && device.online) {
-                evictSession(device.id)
-                update(device.id) { it.copy(online = false) }
+            if (src is DeviceSource.Usb && src.portName !in presentNames) {
+                if (device.online) {
+                    evictSession(device.id)
+                    update(device.id) { it.copy(online = false) }
+                } else if (device.info == null) {
+                    // Tentative entry for a port that disappeared before a successful probe — remove it.
+                    remove(device.id)
+                }
             }
         }
 
@@ -153,12 +158,33 @@ class TabyDeviceMonitor internal constructor(
             if (ref.portName in nonTabyPorts) continue
             val id = "usb:${ref.portName}"
             if (_devices.value.firstOrNull { it.id == id }?.online == true) continue
+
+            // Add a tentative offline entry immediately so the port is visible in the UI
+            // while the probe is in progress (and if it fails).
+            if (_devices.value.none { it.id == id }) {
+                _devices.update { list ->
+                    (list + TabyDevice(
+                        id = id,
+                        label = ref.friendlyName.ifBlank { ref.portName },
+                        transport = TabyTransport.USB,
+                        online = false,
+                        info = null,
+                        source = DeviceSource.Usb(ref.portName, ref.friendlyName),
+                    )).sortedWith(compareBy({ it.transport != TabyTransport.USB }, { it.label }))
+                }
+            }
+
             val info = try {
                 usbProber(ref.portName)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                nonTabyPorts.add(ref.portName)
+                // Only blacklist ports that were never confirmed as a Taby device.
+                // Known devices (info != null) stay visible as offline so reconnect attempts are visible.
+                if (_devices.value.firstOrNull { it.id == id }?.info == null) {
+                    nonTabyPorts.add(ref.portName)
+                    remove(id)
+                }
                 continue
             }
             upsert(

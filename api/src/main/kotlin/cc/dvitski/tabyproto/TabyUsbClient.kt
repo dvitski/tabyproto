@@ -44,6 +44,37 @@ private const val READ_POLL_INTERVAL_MS = 10L
 internal class TabyUsbClient {
     private val logger: Logger = LoggerFactory.getLogger(TabyUsbClient::class.java)
 
+    // ── Persistent port handles ──────────────────────────────────────────────────
+    //
+    // One open SerialPort per port name, shared across probing (INFO), commands and
+    // event polling. The handle is opened once and kept open: closing and reopening a
+    // USB-Serial-JTAG port re-toggles DTR/RTS and knocks the ESP32-S3 into download
+    // mode, so we never close it except on a real disconnect (releasePort).
+    private val openPorts = java.util.concurrent.ConcurrentHashMap<String, SerialPort>()
+    private val portLock = Any()
+
+    /** Returns the cached open handle for [portName], opening (and settling) it if needed. */
+    private fun acquirePort(portName: String): SerialPort {
+        openPorts[portName]?.let { if (it.isOpen) return it }
+        synchronized(portLock) {
+            openPorts[portName]?.let { if (it.isOpen) return it }
+            val port = openAndSettle(portName)
+            openPorts[portName] = port
+            return port
+        }
+    }
+
+    /** Closes and forgets the cached handle for [portName] (real disconnect or probe failure). */
+    internal fun releasePort(portName: String) {
+        synchronized(portLock) {
+            openPorts.remove(portName)?.let {
+                logger.debug("  $portName releasing port handle")
+                runCatching { it.removeDataListener() }
+                runCatching { it.closePort() }
+            }
+        }
+    }
+
     // ── Port discovery ─────────────────────────────────────────────────────────
 
     /**
@@ -91,27 +122,27 @@ internal class TabyUsbClient {
      * Sends `INFO\n`, expects `TABY:INFO <json>`.
      */
     suspend fun readInfo(portName: String): DeviceInfo = withContext(Dispatchers.IO) {
-        // Open once and reuse across retries — reopening each time would reset the device again.
-        val port = openAndSettle(portName)
-        try {
-            var lastError: Exception? = null
-            repeat(INFO_ATTEMPTS) { attempt ->
-                if (attempt > 0) Thread.sleep(INFO_RETRY_DELAY_MS)
-                try {
-                    logger.debug("  $portName INFO attempt ${attempt + 1}/$INFO_ATTEMPTS")
-                    val bytes = "INFO\n".toByteArray(Charsets.US_ASCII)
-                    logger.debug("  $portName → INFO")
-                    port.outputStream.write(bytes)
-                    return@withContext parseInfoResponse(readTabyLine(port, EXCHANGE_TIMEOUT_MS))
-                } catch (e: Exception) {
-                    logger.debug("  $portName attempt ${attempt + 1} error: ${e::class.simpleName}: ${e.message}")
-                    lastError = e
-                }
+        // Reuse the persistent handle; never close it on success — the session that follows
+        // a successful probe shares the very same open port (see acquirePort/openSession).
+        val port = acquirePort(portName)
+        var lastError: Exception? = null
+        repeat(INFO_ATTEMPTS) { attempt ->
+            if (attempt > 0) Thread.sleep(INFO_RETRY_DELAY_MS)
+            try {
+                logger.debug("  $portName INFO attempt ${attempt + 1}/$INFO_ATTEMPTS")
+                val bytes = "INFO\n".toByteArray(Charsets.US_ASCII)
+                logger.debug("  $portName → INFO")
+                port.outputStream.write(bytes)
+                return@withContext parseInfoResponse(readTabyLine(port, EXCHANGE_TIMEOUT_MS))
+            } catch (e: Exception) {
+                logger.debug("  $portName attempt ${attempt + 1} error: ${e::class.simpleName}: ${e.message}")
+                lastError = e
             }
-            throw lastError ?: IllegalStateException("readInfo failed")
-        } finally {
-            port.closePort()
         }
+        // Probe failed outright (not a Taby, or the port went away): drop the handle so the next
+        // poll reopens a fresh one rather than reusing a dead/wrong port.
+        releasePort(portName)
+        throw lastError ?: IllegalStateException("readInfo failed")
     }
 
     /**
@@ -145,7 +176,7 @@ internal class TabyUsbClient {
      * resetting the device on every command.
      */
     suspend fun openSession(portName: String): TabyUsbSession =
-        withContext(Dispatchers.IO) { TabyUsbSession(portName, openAndSettle(portName)) }
+        withContext(Dispatchers.IO) { TabyUsbSession(portName, acquirePort(portName)) }
 
     /**
      * A persistent connection to one Taby over USB. Keeps the port open so
@@ -198,8 +229,7 @@ internal class TabyUsbClient {
 
         override fun close() {
             logger.debug("  $portName closing session")
-            port.removeDataListener()
-            port.closePort()
+            releasePort(portName)
         }
     }
 
@@ -220,17 +250,18 @@ internal class TabyUsbClient {
     // ── Low-level exchange ─────────────────────────────────────────────────────
 
     /**
-     * Opens the port, sends [request], waits for the first `TABY:`-prefixed
-     * response line, then closes the port.
+     * Sends [request] over the persistent handle and waits for the first `TABY:`-prefixed
+     * response line. The handle is kept open; on error it is released so the next call reopens.
      */
     private fun exchange(portName: String, request: String, timeoutMs: Long): String {
-        val port = openAndSettle(portName)
+        val port = acquirePort(portName)
         try {
             logger.debug("  $portName → ${request.trim()}")
             port.outputStream.write(request.toByteArray(Charsets.US_ASCII))
             return readTabyLine(port, timeoutMs)
-        } finally {
-            port.closePort()
+        } catch (e: Exception) {
+            releasePort(portName)
+            throw e
         }
     }
 
@@ -247,19 +278,26 @@ internal class TabyUsbClient {
         port.setParity(SerialPort.NO_PARITY)
         port.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED)
 
+        // IMPORTANT: clear DTR/RTS *before* opening. The Taby is an ESP32-S3 with native
+        // USB-Serial-JTAG. Its control lines are not wired to EN/GPIO0; the USB-Serial-JTAG
+        // controller decodes DTR/RTS *transition patterns*, and any edge on them reproduces the
+        // "enter download" sequence — the device then boots into the ROM downloader
+        // ("waiting for download") and never answers the protocol. jSerialComm asserts DTR *and*
+        // RTS by default on openPort(); on a previously-opened-then-closed device that rising
+        // edge is exactly what wedges the firmware into a silent/download state (the cause of the
+        // app-relaunch "device went silent" failures). Pre-clearing both lines means openPort()
+        // generates no edge, so a freshly powered Taby running its application firmware just keeps
+        // talking. The handle is still held open for the device's lifetime (see acquirePort)
+        // because a mid-session close→reopen would re-create that edge.
+        port.clearDTR()
+        port.clearRTS()
+
         logger.debug("  $portName opening port")
         check(port.openPort()) { "Could not open serial port $portName" }
 
         // Non-blocking reads: read() returns immediately with whatever bytes are available.
         // Prevents indefinite blocking on virtual/Bluetooth COM ports.
         port.setComPortTimeouts(SerialPort.TIMEOUT_NONBLOCKING, 0, 0)
-
-        // ESP32 auto-reset circuit: DTR→EN (reset), RTS→GPIO0 (boot-mode select).
-        // openPort() asserts both HIGH: device is held in reset with GPIO0 LOW = download mode.
-        // Fix: clear RTS first (GPIO0 HIGH = app mode), wait, THEN clear DTR (release reset).
-        port.clearRTS()
-        Thread.sleep(50)
-        port.clearDTR()
 
         drainUntilQuiet(port)
         return port
