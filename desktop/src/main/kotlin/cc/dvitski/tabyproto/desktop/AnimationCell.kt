@@ -21,8 +21,6 @@ import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,8 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cc.dvitski.tabyproto.Animation
+import io.github.kdroidfilter.composemediaplayer.VideoPlayerState
 import io.github.kdroidfilter.composemediaplayer.VideoPlayerSurface
-import io.github.kdroidfilter.composemediaplayer.rememberVideoPlayerState
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -50,23 +48,14 @@ fun AnimationCell(
     animation: Animation,
     thumbnail: ImageBitmap?,
     isSending: Boolean,
+    player: VideoPlayerState,
+    videoActive: Boolean,
+    onHoverChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
     var hovered by remember { mutableStateOf(false) }
-    val playerState = rememberVideoPlayerState()
-
-    DisposableEffect(playerState) { onDispose { playerState.dispose() } }
-    LaunchedEffect(hovered, isSending) {
-        if (hovered && !isSending) {
-            val path = AnimationResources.videoPath(animation.id) ?: return@LaunchedEffect
-            playerState.loop = true
-            playerState.openUri(path)
-        } else {
-            playerState.pause()
-        }
-    }
 
     Column(
         modifier = modifier
@@ -74,8 +63,8 @@ fun AnimationCell(
             .background(theme.surface)
             .border(BorderStroke(if (hovered) 2.dp else 1.dp, if (hovered) theme.accent else theme.border), AppCardShape)
             .clickable(enabled = !isSending, onClick = onSend)
-            .onPointerEvent(PointerEventType.Enter) { hovered = true }
-            .onPointerEvent(PointerEventType.Exit) { hovered = false },
+            .onPointerEvent(PointerEventType.Enter) { hovered = true; onHoverChange(true) }
+            .onPointerEvent(PointerEventType.Exit) { hovered = false; onHoverChange(false) },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val ratio = if (thumbnail != null) thumbnail.width.toFloat() / thumbnail.height.toFloat() else 1f
@@ -83,9 +72,8 @@ fun AnimationCell(
             modifier = Modifier.fillMaxWidth().aspectRatio(ratio).clip(AppCardShape),
             contentAlignment = Alignment.Center,
         ) {
-            val videoReady = hovered && playerState.isPlaying && !playerState.isLoading
             when {
-                videoReady -> VideoPlayerSurface(playerState = playerState, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                videoActive -> VideoPlayerSurface(playerState = player, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 thumbnail != null -> Image(bitmap = thumbnail, contentDescription = animation.id, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                 else -> Text("…", color = theme.textSecondary, fontSize = 18.sp)
             }
