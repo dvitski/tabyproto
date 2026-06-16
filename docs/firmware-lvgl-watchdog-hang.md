@@ -91,15 +91,45 @@ uptime and recurred. Capturing the device serial log alongside the host
 `→ CMD` / `← …` stream (host DEBUG logging) shows the `failed to acquire LVGL
 lock` warning immediately before the watchdog trip.
 
+## Update 2026-06-16 — reproduced; brightness-ramp correlation
+
+Reproduced in a fresh session. The device ran healthy for ~3 min (hundreds of
+successful TOUCH/CHOICE exchanges, healthy heap, `boot_count: 1`, no
+`runtime_unavailable`), then went **completely silent mid-session and never
+recovered** (hard hang; required a power cycle):
+
+```
+00:42:53.102 → BRIGHTNESS 47     ← last command to get a reply
+00:42:59     → TOUCH_SIGNAL      (timeout)
+00:43:05     → BRIGHTNESS 46     (timeout)
+00:43:29     host evicts device offline; re-probes with backoff 4s→6s→12s
+             (device never answers again)
+```
+
+**Trigger correlation:** the hang occurred immediately after a `BRIGHTNESS`
+command during the idle dim ramp — and the earlier hard hang also followed a
+brightness burst (2/2). Brightness changes touch the LVGL/display path, so rapid
+brightness traffic is a plausible **trigger** for the lock hang (not proven
+causation — the device may hang regardless).
+
+**Other observation:** the touch signal read a constant `1` for the whole
+session with nothing touching the sensor (earlier sessions read `0`). Possible
+stuck/miscalibrated touch input or firmware reading quirk; flagging in case it's
+related to the LVGL task's workload.
+
 ## Host-side changes already made (mitigations, not fixes)
 
 - **Stopped a redundant `BRIGHTNESS` command flood** (`rampBrightness` was
   emitting dozens of identical commands ~30 ms apart) that hammered the
   USB-Serial-JTAG + LVGL lock and coincided with a hard hang. Commit
   `fix(desktop): stop redundant BRIGHTNESS command flood`.
+- **Softened the dim ramp** from 30 ms to 60 ms steps (`DIM_RAMP_STEP_MS`),
+  halving brightness command rate during a ramp, given the trigger correlation
+  above. Still smooth; hypothesis-driven, not a confirmed fix.
 - **Wedged-device detection**: the host now marks a device offline after a few
   consecutive command timeouts so it can re-probe/reconnect instead of polling a
-  dead device forever. Commit
+  dead device forever. Verified live: it evicted the hung device ~30 s after it
+  went silent, and probe backoff retried with growing spacing. Commit
   `feat(api): detect wedged devices; harden monitor reconnection + tests`.
 
 These reduce host-side stress and improve recovery, but the firmware must fix

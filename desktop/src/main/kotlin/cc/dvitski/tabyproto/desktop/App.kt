@@ -46,6 +46,11 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
+// Interval between brightness steps in a ramp. Kept deliberately coarse: brightness commands
+// touch the device's LVGL path, and rapid bursts correlate with the firmware LVGL-lock hang
+// (see docs/firmware-lvgl-watchdog-hang.md), so we trade a touch of smoothness for fewer commands.
+private const val DIM_RAMP_STEP_MS = 60L
+
 sealed class Screen {
     object Home : Screen()
     data class Settings(val category: SettingsCategory = SettingsCategory.Device) : Screen()
@@ -139,13 +144,14 @@ class AppState {
             // Otherwise emit a de-duplicated ramp — crucially empty when already at
             // target, so we don't flood the device with redundant BRIGHTNESS commands.
             val from = hwBrightness
-            val values = if (from == null) listOf(target) else brightnessRampSteps(from, target, durationMs)
+            val values = if (from == null) listOf(target)
+                         else brightnessRampSteps(from, target, durationMs, DIM_RAMP_STEP_MS)
             values.forEachIndexed { i, value ->
                 val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: return@launch
                 if (!device.online) return@launch
                 runCatching { monitor.session(device).setBrightness(value) }
                 hwBrightness = value
-                if (i < values.lastIndex) delay(30)
+                if (i < values.lastIndex) delay(DIM_RAMP_STEP_MS)
             }
         }
     }
