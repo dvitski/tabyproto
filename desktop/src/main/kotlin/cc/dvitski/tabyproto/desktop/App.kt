@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 
 // Interval between brightness steps in a ramp. Kept deliberately coarse: brightness commands
@@ -200,10 +201,25 @@ class AppState {
             getSavedBrightness = { _brightness.value },
         )
         scope.launch {
+            var lastTouchAnimMs = 0L
             monitor.events.collect { event ->
                 if (event is TabyEvent.TouchSignal && event.signal != 0 &&
                     event.device.id == _activeDeviceId.value) {
                     idleScheduler.notifyActivity()
+                    val now = System.currentTimeMillis()
+                    if (now - lastTouchAnimMs >= TOUCH_COOLDOWN_MS) {
+                        lastTouchAnimMs = now
+                        val device = devices.value.firstOrNull { it.id == event.device.id && it.online }
+                        if (device != null) {
+                            val animation = TOUCH_POOL.random()
+                            controller(device).request(
+                                priority  = AnimationPriority.TOUCH,
+                                animation = animation,
+                                durationMs = AnimationResources.durations[animation.raw] ?: 3_000L,
+                                preempt   = true,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -325,13 +341,31 @@ class AppState {
 
     fun sendMusicControl(control: MediaControl, appId: String?) = musicMonitor.sendControl(control, appId)
 
+    suspend fun reboot(device: TabyDevice): Result<Unit> = try {
+        monitor.session(device).reboot()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
     private suspend fun controller(device: TabyDevice): AnimationController {
         controllers[device.id]?.let { return it }
         return AnimationController(monitor.session(device), scope)
             .also { controllers[device.id] = it }
     }
 
-    fun close() { lockMonitor.close(); scope.cancel(); monitor.close() }
+    fun close() { runBlocking { rebootAll() }; lockMonitor.close(); scope.cancel(); monitor.close() }
+
+    private suspend fun rebootAll() {
+        devices.value.filter { it.online }.forEach { device ->
+            runCatching { monitor.session(device).reboot() }
+        }
+    }
+
+    companion object {
+        val TOUCH_POOL = listOf(Animations.BLUSH, Animations.LOVE_01, Animations.YEAH)
+        const val TOUCH_COOLDOWN_MS = 5_000L
+    }
 }
 
 @Composable
@@ -452,6 +486,10 @@ fun App(appState: AppState) {
                                         idleSettings = idleSettings,
                                         onIdleSettingsChange = appState::updateIdleSettings,
                                         idleStatus = idleStatus,
+                                        onReboot = {
+                                            val device = devices.firstOrNull { it.id == activeDeviceId && it.online }
+                                            if (device != null) scope.launch { appState.reboot(device) }
+                                        },
                                     )
                                 }
                             }

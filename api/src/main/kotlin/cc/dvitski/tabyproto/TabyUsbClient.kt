@@ -205,6 +205,29 @@ internal class TabyUsbClient {
             })
         }
 
+        /**
+         * Releases the persistent port handle, waits for the USB-CDC state to settle,
+         * then opens a fresh connection (DTR pre-cleared) and sends REBOOT — replicating
+         * what happens when the app is closed and Python opens the port.
+         */
+        fun hardReboot() {
+            logger.debug("  $portName hard-reboot: releasing, settling, reopening")
+            releasePort(portName)
+            Thread.sleep(500)
+            val fresh = SerialPort.getCommPort(portName)
+            fresh.setBaudRate(USB_BAUD_RATE)
+            fresh.clearDTR()
+            fresh.clearRTS()
+            fresh.openPort()
+            try {
+                fresh.outputStream.write("REBOOT\n".toByteArray(Charsets.US_ASCII))
+                fresh.outputStream.flush()
+                Thread.sleep(100)
+            } finally {
+                fresh.closePort()
+            }
+        }
+
         fun sendCommand(command: String): CommandResult {
             val request = normalizeUsbRequest(command)
             logger.debug("  $portName → ${request.trim()}")
@@ -214,6 +237,7 @@ internal class TabyUsbClient {
             return CommandResult(ok, TabyTransport.USB, command, rawResponse,
                 if (ok) "USB command acknowledged: $rawResponse" else rawResponse)
         }
+
 
         internal fun readInfoDirect(): DeviceInfo =
             parseInfoResponse(sendCommand("INFO").rawResponse)

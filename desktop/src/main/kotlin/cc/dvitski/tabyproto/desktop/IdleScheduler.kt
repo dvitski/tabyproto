@@ -64,6 +64,9 @@ class IdleScheduler(
         if (forced) return
         forced = true
         loopJob?.cancel()
+        // Stop the current indefinite IDLE animation so the relaxed animation plays immediately
+        // rather than being queued behind it (same priority, no expiry → pending never advances).
+        scope.launch { onStopAnimation(AnimationPriority.IDLE) }
         startLoop(immediate = true)
     }
 

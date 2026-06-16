@@ -54,7 +54,10 @@ class AnimationController(
                 }
             }
         }
-        toPlay?.let { runCatching { session.play(it) } }
+        toPlay?.let {
+            runCatching { session.play(it) }
+            _currentAnimation.value = it
+        }
         return toPlay != null
     }
 
@@ -67,7 +70,10 @@ class AnimationController(
             toPlay = advancePending()
             if (toPlay == null) _currentAnimation.value = null
         }
-        toPlay?.let { runCatching { session.play(it) } }
+        toPlay?.let {
+            runCatching { session.play(it) }
+            _currentAnimation.value = it
+        }
     }
 
     suspend fun cancel(priority: Int) {
@@ -77,7 +83,6 @@ class AnimationController(
     // Must be called while holding mutex
     private fun activate(priority: Int, animation: Animation, durationMs: Long?, now: Long) {
         val record = Active(priority, animation, now, durationMs).also { active = it }
-        _currentAnimation.value = animation
         expiryJob = if (durationMs != null) scope.launch {
             delay(durationMs)
             var toPlay: Animation? = null
@@ -88,7 +93,10 @@ class AnimationController(
                     if (toPlay == null) _currentAnimation.value = null
                 }
             }
-            toPlay?.let { runCatching { session.play(it) } }
+            toPlay?.let {
+                runCatching { session.play(it) }
+                _currentAnimation.value = it
+            }
         } else null
     }
 

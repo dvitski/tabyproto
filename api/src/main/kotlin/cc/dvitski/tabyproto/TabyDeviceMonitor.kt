@@ -329,16 +329,16 @@ class TabyDeviceMonitor internal constructor(
                     val s = session(current)
 
                     val touch = s.readTouchSignal()
-                    if (touch != lastTouch) {
+                    if (lastTouch != null && touch != lastTouch) {
                         emitEvent(TabyEvent.TouchSignal(current, touch))
-                        lastTouch = touch
                     }
+                    lastTouch = touch
 
                     val choice = s.readChoiceSignal()
-                    if (choice != lastChoice) {
+                    if (lastChoice != null && choice != lastChoice) {
                         emitEvent(TabyEvent.ChoiceSelected(current, choice.signal, choice.selection))
-                        lastChoice = choice
                     }
+                    lastChoice = choice
 
                     if (tick % 10 == 0) {
                         val info = s.readInfo()

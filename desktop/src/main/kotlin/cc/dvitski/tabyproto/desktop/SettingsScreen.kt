@@ -22,10 +22,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.AlertDialog
 import androidx.compose.material.Icon
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Brightness6
@@ -96,6 +98,7 @@ fun SettingsScreen(
     idleSettings: IdleSettings,
     onIdleSettingsChange: (IdleSettings) -> Unit,
     idleStatus: IdleStatus,
+    onReboot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalAppTheme.current
@@ -142,6 +145,7 @@ fun SettingsScreen(
                 idleSettings = idleSettings,
                 onIdleSettingsChange = onIdleSettingsChange,
                 idleStatus = idleStatus,
+                onReboot = onReboot,
                 modifier = Modifier.weight(1f).fillMaxWidth().padding(20.dp),
             )
         }
@@ -189,6 +193,7 @@ fun SettingsScreen(
                 idleSettings = idleSettings,
                 onIdleSettingsChange = onIdleSettingsChange,
                 idleStatus = idleStatus,
+                onReboot = onReboot,
                 modifier = Modifier.weight(1f).fillMaxHeight().padding(20.dp),
             )
         }
@@ -223,13 +228,14 @@ private fun CategoryContent(
     idleSettings: IdleSettings,
     onIdleSettingsChange: (IdleSettings) -> Unit,
     idleStatus: IdleStatus,
+    onReboot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
         when (selectedCategory) {
             SettingsCategory.Music      -> MusicDetail(musicState, onMusicControl)
             SettingsCategory.Voice      -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
-            SettingsCategory.Device     -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend)
+            SettingsCategory.Device     -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend, onReboot)
             SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme, minimizeToTray, onSetMinimizeToTray)
             SettingsCategory.Idle       -> IdleDetail(idleSettings, onIdleSettingsChange, idleStatus)
         }
@@ -391,8 +397,31 @@ private fun DeviceDetail(
     thumbnailCache: ThumbnailCache,
     sendingAnimation: Animation?,
     onSend: (Animation) -> Unit,
+    onReboot: () -> Unit,
 ) {
     val theme = LocalAppTheme.current
+    val activeOnline = devices.any { it.id == activeDeviceId && it.online }
+    var showRebootConfirm by remember { mutableStateOf(false) }
+
+    if (showRebootConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRebootConfirm = false },
+            title = { Text("Reboot Taby?", color = theme.textPrimary) },
+            text = { Text("The device will restart and be unavailable for a few seconds.", color = theme.textSecondary) },
+            confirmButton = {
+                TextButton(onClick = { showRebootConfirm = false; onReboot() }) {
+                    Text("Reboot", color = theme.accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRebootConfirm = false }) {
+                    Text("Cancel", color = theme.textSecondary)
+                }
+            },
+            backgroundColor = theme.surface,
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Device", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         DeviceSelector(devices, activeDeviceId, onSelect, onAddHost, onRemoveHost)
@@ -415,6 +444,19 @@ private fun DeviceDetail(
                     color = theme.textSecondary,
                     fontSize = 13.sp,
                 )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("ACTIONS", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+            Box(
+                modifier = Modifier
+                    .clip(AppButtonShape)
+                    .border(1.dp, if (activeOnline) theme.border else theme.border.copy(alpha = 0.4f), AppButtonShape)
+                    .background(theme.surface)
+                    .then(if (activeOnline) Modifier.clickable { showRebootConfirm = true } else Modifier)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text("Reboot", fontSize = 14.sp, color = if (activeOnline) theme.textPrimary else theme.textSecondary.copy(alpha = 0.4f))
             }
         }
         Text("PLAY ANIMATIONS", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)

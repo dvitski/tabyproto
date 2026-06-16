@@ -15,6 +15,7 @@ interface TabySession : Closeable {
     suspend fun play(command: AnimationCommand): CommandResult
     suspend fun setBrightness(percent: Int): CommandResult
     suspend fun sendRaw(command: String): CommandResult
+    suspend fun reboot(): CommandResult
     suspend fun readInfo(): DeviceInfo
     suspend fun readTouchSignal(): Int
     suspend fun readChoiceSignal(): ChoiceSignal
@@ -47,6 +48,14 @@ internal class UsbTabySession(
 
     override suspend fun sendRaw(command: String): CommandResult =
         mutex.withLock { withContext(Dispatchers.IO) { usbSession.sendCommand(command) } }
+
+    override suspend fun reboot(): CommandResult =
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                usbSession.hardReboot()
+                CommandResult(ok = true, TabyTransport.USB, "REBOOT", "ok", "Reboot sent")
+            }
+        }
 
     override suspend fun readInfo(): DeviceInfo =
         mutex.withLock { withContext(Dispatchers.IO) { usbSession.readInfoDirect() } }
@@ -83,6 +92,13 @@ internal class WifiTabySession(
     }
 
     override suspend fun sendRaw(command: String) = wifiClient.sendCommand(command)
+
+    override suspend fun reboot(): CommandResult = try {
+        wifiClient.sendCommand("REBOOT")
+    } catch (_: Exception) {
+        CommandResult(ok = true, TabyTransport.WIFI, "REBOOT", "ok", "Reboot sent")
+    }
+
     override suspend fun readInfo(): DeviceInfo = wifiClient.readHealth()
     override suspend fun readTouchSignal(): Int = wifiClient.readTouchSignal()
     override suspend fun readChoiceSignal(): ChoiceSignal = wifiClient.readChoiceSignal()
