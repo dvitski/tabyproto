@@ -70,12 +70,21 @@ class AppState {
     private val monitor = TabyDeviceMonitor(initialManualHosts = hostsStore.load())
     private val themeStore = ThemeStore()
     private val musicMonitor = MusicMonitor(scope)
+    private val gameMonitor = GameMonitor(scope)
+    private val detectionSettingsStore = DetectionSettingsStore()
     private val lockMonitor = LockMonitor(scope)
     private val controllers = ConcurrentHashMap<String, AnimationController>()
     private lateinit var idleScheduler: IdleScheduler
 
     val devices: StateFlow<List<TabyDevice>> = monitor.devices
     val musicState: StateFlow<MusicState> = musicMonitor.state
+    val gameState: StateFlow<GameState> = gameMonitor.state
+
+    private val _initialDetectionSettings = detectionSettingsStore.load()
+    private val _musicDetectionEnabled = MutableStateFlow(_initialDetectionSettings.musicEnabled)
+    val musicDetectionEnabled: StateFlow<Boolean> = _musicDetectionEnabled.asStateFlow()
+    private val _gameDetectionEnabled = MutableStateFlow(_initialDetectionSettings.gameEnabled)
+    val gameDetectionEnabled: StateFlow<Boolean> = _gameDetectionEnabled.asStateFlow()
 
     private val _activeDeviceId = MutableStateFlow<String?>(null)
     val activeDeviceId: StateFlow<String?> = _activeDeviceId.asStateFlow()
@@ -173,9 +182,24 @@ class AppState {
         generalStore.saveMinimizeToTray(enabled)
     }
 
+    fun setMusicDetectionEnabled(enabled: Boolean) {
+        _musicDetectionEnabled.value = enabled
+        musicMonitor.setEnabled(enabled)
+        detectionSettingsStore.save(DetectionSettings(musicEnabled = enabled, gameEnabled = _gameDetectionEnabled.value))
+    }
+
+    fun setGameDetectionEnabled(enabled: Boolean) {
+        _gameDetectionEnabled.value = enabled
+        gameMonitor.setEnabled(enabled)
+        detectionSettingsStore.save(DetectionSettings(musicEnabled = _musicDetectionEnabled.value, gameEnabled = enabled))
+    }
+
     init {
         monitor.start()
         musicMonitor.start()
+        musicMonitor.setEnabled(_musicDetectionEnabled.value)
+        gameMonitor.start()
+        gameMonitor.setEnabled(_gameDetectionEnabled.value)
         thumbnailCache.preloadAll(Animations.all)
         AnimationResources.preloadAll(Animations.all, scope)
         idleScheduler = IdleScheduler(
@@ -299,6 +323,42 @@ class AppState {
                 controller(device).request(
                     priority   = AnimationPriority.MUSIC,
                     animation  = Animations.LISTENING_MUSIC_LOOP,
+                    durationMs = null,
+                    preempt    = true,
+                )
+            }
+        }
+        scope.launch {
+            gameMonitor.state.collect { state ->
+                val id = _activeDeviceId.value ?: return@collect
+                val device = devices.value.firstOrNull { it.id == id && it.online } ?: return@collect
+                when (state) {
+                    GameState.Idle -> {
+                        controller(device).cancel(AnimationPriority.GAME)
+                        controller(device).stop(AnimationPriority.GAME)
+                        controller(device).request(AnimationPriority.IDLE, IdleScheduler.IDLE_POOL.random(), null, preempt = false)
+                    }
+                    is GameState.Active -> {
+                        idleScheduler.notifyActivity()
+                        controller(device).request(
+                            priority   = AnimationPriority.GAME,
+                            animation  = Animations.F1_CAR,
+                            durationMs = null,
+                            preempt    = true,
+                        )
+                    }
+                }
+            }
+        }
+        scope.launch {
+            while (true) {
+                delay(3_000)
+                val active = gameMonitor.state.value as? GameState.Active ?: continue
+                val id = _activeDeviceId.value ?: continue
+                val device = devices.value.firstOrNull { it.id == id && it.online } ?: continue
+                controller(device).request(
+                    priority   = AnimationPriority.GAME,
+                    animation  = Animations.F1_CAR,
                     durationMs = null,
                     preempt    = true,
                 )
