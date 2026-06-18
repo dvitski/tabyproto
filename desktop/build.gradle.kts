@@ -26,13 +26,14 @@ compose.desktop {
         mainClass = "cc.dvitski.tabyproto.bootstrap.LauncherKt"
         nativeDistributions {
             targetFormats(TargetFormat.Exe)
-            packageName = "Taby"
+            packageName = "TabyProto-Desktop"
             packageVersion = "1.0.0"
+            description = "TabyProto Desktop"
             windows {
                 iconFile.set(project.file("src/main/resources/icons/icon.ico"))
-                menuGroup = "Taby"
+                menuGroup = "TabyProto Desktop"
                 upgradeUuid = "2647eff9-74d7-4b2b-aee6-62f5277d349c"
-                perUserInstall = true   // installs to %LocalAppData%\Taby — user-writable, no admin needed
+                perUserInstall = true   // installs to %LocalAppData%\TabyProto-Desktop — user-writable, no admin needed
                 dirChooser = false
                 shortcut = true
             }
