@@ -6,6 +6,7 @@ plugins {
 
 dependencies {
     implementation(project(":api"))
+    implementation(project(":anim-resources"))
     implementation(compose.desktop.currentOs)
     implementation(compose.materialIconsExtended)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
