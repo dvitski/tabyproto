@@ -65,7 +65,7 @@ sealed class Screen {
     data class Settings(val category: SettingsCategory = SettingsCategory.Device) : Screen()
 }
 
-enum class SettingsCategory { Music, Voice, Device, Appearance, Idle }
+enum class SettingsCategory { Music, Game, Voice, Device, Appearance, Idle }
 
 enum class ListeningState { Idle, WakeWordDetected, Listening, Responding }
 
@@ -461,6 +461,9 @@ fun App(appState: AppState) {
         val listeningState by appState.listeningState.collectAsState()
         val brightness by appState.brightness.collectAsState()
         val musicState by appState.musicState.collectAsState()
+        val gameState by appState.gameState.collectAsState()
+        val musicDetectionEnabled by appState.musicDetectionEnabled.collectAsState()
+        val gameDetectionEnabled by appState.gameDetectionEnabled.collectAsState()
         val idleSettings by appState.idleSettings.collectAsState()
         val idleStatus by appState.idleStatus.collectAsState()
         val minimizeToTray by appState.minimizeToTray.collectAsState()
@@ -557,6 +560,11 @@ fun App(appState: AppState) {
                                         onBrightnessChange = appState::setBrightness,
                                         musicState = musicState,
                                         onMusicControl = appState::sendMusicControl,
+                                        musicDetectionEnabled = musicDetectionEnabled,
+                                        onSetMusicDetectionEnabled = appState::setMusicDetectionEnabled,
+                                        gameState = gameState,
+                                        gameDetectionEnabled = gameDetectionEnabled,
+                                        onSetGameDetectionEnabled = appState::setGameDetectionEnabled,
                                         idleSettings = idleSettings,
                                         onIdleSettingsChange = appState::updateIdleSettings,
                                         idleStatus = idleStatus,

@@ -63,6 +63,7 @@ import cc.dvitski.tabyproto.TabyDevice
 private val SettingsCategory.label: String
     get() = when (this) {
         SettingsCategory.Music -> "Music"
+        SettingsCategory.Game -> "Game"
         SettingsCategory.Voice -> "Voice"
         SettingsCategory.Device -> "Device"
         SettingsCategory.Appearance -> "Appearance"
@@ -95,6 +96,11 @@ fun SettingsScreen(
     onBrightnessChange: (Int) -> Unit,
     musicState: MusicState,
     onMusicControl: (MediaControl, String?) -> Unit,
+    musicDetectionEnabled: Boolean,
+    onSetMusicDetectionEnabled: (Boolean) -> Unit,
+    gameState: GameState,
+    gameDetectionEnabled: Boolean,
+    onSetGameDetectionEnabled: (Boolean) -> Unit,
     idleSettings: IdleSettings,
     onIdleSettingsChange: (IdleSettings) -> Unit,
     idleStatus: IdleStatus,
@@ -122,6 +128,11 @@ fun SettingsScreen(
                 selectedCategory = selectedCategory,
                 musicState = musicState,
                 onMusicControl = onMusicControl,
+                musicDetectionEnabled = musicDetectionEnabled,
+                onSetMusicDetectionEnabled = onSetMusicDetectionEnabled,
+                gameState = gameState,
+                gameDetectionEnabled = gameDetectionEnabled,
+                onSetGameDetectionEnabled = onSetGameDetectionEnabled,
                 devices = devices,
                 activeDeviceId = activeDeviceId,
                 onSelectDevice = onSelectDevice,
@@ -170,6 +181,11 @@ fun SettingsScreen(
                 selectedCategory = selectedCategory,
                 musicState = musicState,
                 onMusicControl = onMusicControl,
+                musicDetectionEnabled = musicDetectionEnabled,
+                onSetMusicDetectionEnabled = onSetMusicDetectionEnabled,
+                gameState = gameState,
+                gameDetectionEnabled = gameDetectionEnabled,
+                onSetGameDetectionEnabled = onSetGameDetectionEnabled,
                 devices = devices,
                 activeDeviceId = activeDeviceId,
                 onSelectDevice = onSelectDevice,
@@ -205,6 +221,11 @@ private fun CategoryContent(
     selectedCategory: SettingsCategory,
     musicState: MusicState,
     onMusicControl: (MediaControl, String?) -> Unit,
+    musicDetectionEnabled: Boolean,
+    onSetMusicDetectionEnabled: (Boolean) -> Unit,
+    gameState: GameState,
+    gameDetectionEnabled: Boolean,
+    onSetGameDetectionEnabled: (Boolean) -> Unit,
     devices: List<cc.dvitski.tabyproto.TabyDevice>,
     activeDeviceId: String?,
     onSelectDevice: (String) -> Unit,
@@ -233,7 +254,8 @@ private fun CategoryContent(
 ) {
     Box(modifier = modifier) {
         when (selectedCategory) {
-            SettingsCategory.Music      -> MusicDetail(musicState, onMusicControl)
+            SettingsCategory.Music      -> MusicDetail(musicState, musicDetectionEnabled, onSetMusicDetectionEnabled, onMusicControl)
+            SettingsCategory.Game       -> GameDetail(gameState, gameDetectionEnabled, onSetGameDetectionEnabled)
             SettingsCategory.Voice      -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
             SettingsCategory.Device     -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend, onReboot)
             SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme, minimizeToTray, onSetMinimizeToTray)
@@ -294,10 +316,18 @@ private fun TypeFilterChip(
 }
 
 @Composable
-private fun MusicDetail(state: MusicState, onControl: (MediaControl, String?) -> Unit) {
+private fun MusicDetail(state: MusicState, enabled: Boolean, onSetEnabled: (Boolean) -> Unit, onControl: (MediaControl, String?) -> Unit) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("Music", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("DETECT MUSIC", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+            TogglePill(checked = enabled, onCheckedChange = onSetEnabled)
+        }
         when (state) {
             MusicState.Idle -> Text("No music playing", color = theme.textSecondary, fontSize = 15.sp)
             is MusicState.Active -> {
@@ -309,6 +339,27 @@ private fun MusicDetail(state: MusicState, onControl: (MediaControl, String?) ->
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun GameDetail(state: GameState, enabled: Boolean, onSetEnabled: (Boolean) -> Unit) {
+    val theme = LocalAppTheme.current
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Text("Game", color = theme.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("DETECT GAMES", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+            TogglePill(checked = enabled, onCheckedChange = onSetEnabled)
+        }
+        val statusText = when (state) {
+            GameState.Idle -> "No game detected"
+            is GameState.Active -> "Currently detected: ${state.processName}"
+        }
+        Text(statusText, color = theme.textSecondary, fontSize = 15.sp)
     }
 }
 
