@@ -1,2 +1,2 @@
 rootProject.name = "tabyproto"
-include("api", "app", "desktop", "anim-resources")
+include("api", "app", "desktop", "anim-resources", "bootstrap")
