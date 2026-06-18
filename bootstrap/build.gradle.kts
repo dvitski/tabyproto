@@ -36,3 +36,18 @@ tasks.register<JavaExec>("generateUpdateXml") {
         layout.buildDirectory.file("update.xml").get().asFile.absolutePath
     )
 }
+
+val generateVersionProperties by tasks.registering {
+    val versionString = rootProject.version.toString()
+    val outDir = layout.buildDirectory.dir("generated/resources/main")
+    outputs.dir(outDir)
+    doLast {
+        val f = outDir.get().file("version.properties").asFile
+        f.parentFile.mkdirs()
+        f.writeText("version=$versionString\n")
+    }
+}
+
+sourceSets["main"].resources.srcDir(
+    generateVersionProperties.map { layout.buildDirectory.dir("generated/resources/main") }
+)
