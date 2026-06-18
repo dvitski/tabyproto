@@ -11,16 +11,24 @@ import kotlin.time.Duration.Companion.milliseconds
 class MusicMonitor(private val scope: CoroutineScope) {
 
     private val poller = SmtcPoller()
+    private val _enabled = MutableStateFlow(true)
     private val _state = MutableStateFlow<MusicState>(MusicState.Idle)
     val state: StateFlow<MusicState> = _state.asStateFlow()
 
     fun start() {
         scope.launch {
             while (true) {
-                _state.value = poller.poll().toMusicState()
+                if (_enabled.value) {
+                    _state.value = poller.poll().toMusicState()
+                }
                 delay(2_000L)
             }
         }
+    }
+
+    fun setEnabled(enabled: Boolean) {
+        _enabled.value = enabled
+        if (!enabled) _state.value = MusicState.Idle
     }
 
     fun sendControl(control: MediaControl, appId: String?) {
