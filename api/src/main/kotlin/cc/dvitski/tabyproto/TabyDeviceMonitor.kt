@@ -75,6 +75,11 @@ class TabyDeviceMonitor internal constructor(
     private val sessions = ConcurrentHashMap<String, TabySession>()
     private val sessionMutex = Mutex()
 
+    // Devices whose background TOUCH_SIGNAL/CHOICE_SIGNAL/INFO polling should be skipped right
+    // now because a time-critical command sequence (e.g. a brightness ramp) needs the device's
+    // command channel to itself instead of interleaving with poll traffic.
+    private val pausedPolling = ConcurrentHashMap.newKeySet<String>()
+
     @Volatile private var closed = false
     private var started = false
     private var mdnsBrowser: Closeable? = null
@@ -301,6 +306,21 @@ class TabyDeviceMonitor internal constructor(
             }
         }
 
+    /**
+     * Runs [block] with [deviceId]'s background event polling (TOUCH_SIGNAL/CHOICE_SIGNAL/INFO)
+     * suspended, so a time-critical command sequence sent inside [block] doesn't interleave with
+     * poll traffic on the device's command channel. Polling resumes once [block] completes, even
+     * if it throws.
+     */
+    suspend fun <T> withPollingPaused(deviceId: String, block: suspend () -> T): T {
+        pausedPolling.add(deviceId)
+        try {
+            return block()
+        } finally {
+            pausedPolling.remove(deviceId)
+        }
+    }
+
     private suspend fun evictSession(id: String) {
         stopPolling(id)
         sessionMutex.withLock {
@@ -326,6 +346,10 @@ class TabyDeviceMonitor internal constructor(
                 try {
                     val current = _devices.value.firstOrNull { it.id == device.id }
                         ?.takeIf { it.online } ?: break
+                    if (device.id in pausedPolling) {
+                        delay(eventPollInterval)
+                        continue
+                    }
                     val s = session(current)
 
                     val touch = s.readTouchSignal()

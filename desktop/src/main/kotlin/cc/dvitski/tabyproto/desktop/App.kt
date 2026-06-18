@@ -47,10 +47,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 
-// Interval between brightness steps in a ramp. Kept deliberately coarse: brightness commands
+// Minimum spacing between BRIGHTNESS sends in any rampBrightness() fade. Brightness commands
 // touch the device's LVGL path, and rapid bursts correlate with the firmware LVGL-lock hang
-// (see docs/firmware-lvgl-watchdog-hang.md), so we trade a touch of smoothness for fewer commands.
-private const val DIM_RAMP_STEP_MS = 60L
+// (see docs/firmware-lvgl-watchdog-hang.md) — but the confirmed trigger was BRIGHTNESS traffic
+// interleaved with background TOUCH_SIGNAL/CHOICE_SIGNAL/INFO polling, not the send rate
+// itself. rampBrightness() pauses that polling while sending (monitor.withPollingPaused), so
+// this can stay short enough to feel smooth.
+private const val DIM_RAMP_STEP_MS = 30L
+
+// Fade duration for live slider input. rampBrightness() retargets from the current hardware
+// level on every call, so a fast drag just keeps redirecting an in-flight short fade — long
+// enough to look like a deliberate fade rather than a snap, short enough to feel responsive.
+private const val LIVE_BRIGHTNESS_FADE_MS = 250L
 
 sealed class Screen {
     object Home : Screen()
@@ -130,7 +138,6 @@ class AppState {
 
     private val _brightness = MutableStateFlow<Int?>(null)
     val brightness: StateFlow<Int?> = _brightness.asStateFlow()
-    private var brightnessJob: Job? = null
     private var rampJob: Job? = null
     @Volatile private var hwBrightness: Int? = null
 
@@ -138,30 +145,37 @@ class AppState {
     fun showVoiceOverlay() { _voiceOverlayVisible.value = true }
     fun hideVoiceOverlay() { _voiceOverlayVisible.value = false }
 
+    /** Live brightness control (e.g. the slider). Fades the hardware from its current level
+     *  to [percent] rather than snapping. A slider drag calls this many times per second;
+     *  rampBrightness() retargets from hwBrightness each time, so a fresh drag value smoothly
+     *  redirects an in-flight fade instead of restarting it from the old target. */
     fun setBrightness(percent: Int) {
         _brightness.value = percent
-        brightnessJob?.cancel()
-        brightnessJob = scope.launch {
-            delay(100)
-            rampBrightness(percent, durationMs = 600)
-        }
+        rampBrightness(percent, durationMs = LIVE_BRIGHTNESS_FADE_MS)
     }
 
     private fun rampBrightness(target: Int, durationMs: Long) {
         rampJob?.cancel()
         rampJob = scope.launch {
+            val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: return@launch
+            if (!device.online) return@launch
             // When the hardware level is unknown, send the target once to sync it.
             // Otherwise emit a de-duplicated ramp — crucially empty when already at
             // target, so we don't flood the device with redundant BRIGHTNESS commands.
             val from = hwBrightness
             val values = if (from == null) listOf(target)
                          else brightnessRampSteps(from, target, durationMs, DIM_RAMP_STEP_MS)
-            values.forEachIndexed { i, value ->
-                val device = devices.value.firstOrNull { it.id == _activeDeviceId.value } ?: return@launch
-                if (!device.online) return@launch
-                runCatching { monitor.session(device).setBrightness(value) }
-                hwBrightness = value
-                if (i < values.lastIndex) delay(DIM_RAMP_STEP_MS)
+            // Pause the device's background TOUCH_SIGNAL/CHOICE_SIGNAL/INFO polling for the
+            // ramp's duration instead of throttling the ramp itself — that polling, not the
+            // ramp's own command rate, was what interleaved with BRIGHTNESS traffic and
+            // correlated with the LVGL-lock hang (see docs/firmware-lvgl-watchdog-hang.md).
+            monitor.withPollingPaused(device.id) {
+                values.forEachIndexed { i, value ->
+                    if (devices.value.firstOrNull { it.id == device.id }?.online != true) return@withPollingPaused
+                    runCatching { monitor.session(device).setBrightness(value) }
+                    hwBrightness = value
+                    if (i < values.lastIndex) delay(DIM_RAMP_STEP_MS)
+                }
             }
         }
     }
