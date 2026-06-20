@@ -92,6 +92,11 @@ fun SettingsScreen(
     onSetTheme: (Boolean, ColorPalette) -> Unit,
     minimizeToTray: Boolean,
     onSetMinimizeToTray: (Boolean) -> Unit,
+    launchAtStartup: Boolean,
+    onSetLaunchAtStartup: (Boolean) -> Unit,
+    startMinimizedOnStartup: Boolean,
+    onSetStartMinimizedOnStartup: (Boolean) -> Unit,
+    startupAvailable: Boolean,
     brightness: Int?,
     onBrightnessChange: (Int) -> Unit,
     musicState: MusicState,
@@ -153,6 +158,11 @@ fun SettingsScreen(
                 onSetTheme = onSetTheme,
                 minimizeToTray = minimizeToTray,
                 onSetMinimizeToTray = onSetMinimizeToTray,
+                launchAtStartup = launchAtStartup,
+                onSetLaunchAtStartup = onSetLaunchAtStartup,
+                startMinimizedOnStartup = startMinimizedOnStartup,
+                onSetStartMinimizedOnStartup = onSetStartMinimizedOnStartup,
+                startupAvailable = startupAvailable,
                 idleSettings = idleSettings,
                 onIdleSettingsChange = onIdleSettingsChange,
                 idleStatus = idleStatus,
@@ -206,6 +216,11 @@ fun SettingsScreen(
                 onSetTheme = onSetTheme,
                 minimizeToTray = minimizeToTray,
                 onSetMinimizeToTray = onSetMinimizeToTray,
+                launchAtStartup = launchAtStartup,
+                onSetLaunchAtStartup = onSetLaunchAtStartup,
+                startMinimizedOnStartup = startMinimizedOnStartup,
+                onSetStartMinimizedOnStartup = onSetStartMinimizedOnStartup,
+                startupAvailable = startupAvailable,
                 idleSettings = idleSettings,
                 onIdleSettingsChange = onIdleSettingsChange,
                 idleStatus = idleStatus,
@@ -246,6 +261,11 @@ private fun CategoryContent(
     onSetTheme: (Boolean, ColorPalette) -> Unit,
     minimizeToTray: Boolean,
     onSetMinimizeToTray: (Boolean) -> Unit,
+    launchAtStartup: Boolean,
+    onSetLaunchAtStartup: (Boolean) -> Unit,
+    startMinimizedOnStartup: Boolean,
+    onSetStartMinimizedOnStartup: (Boolean) -> Unit,
+    startupAvailable: Boolean,
     idleSettings: IdleSettings,
     onIdleSettingsChange: (IdleSettings) -> Unit,
     idleStatus: IdleStatus,
@@ -258,7 +278,10 @@ private fun CategoryContent(
             SettingsCategory.Game       -> GameDetail(gameState, gameDetectionEnabled, onSetGameDetectionEnabled)
             SettingsCategory.Voice      -> PlaceholderDetail("Voice", "Wake word and microphone settings coming soon.")
             SettingsCategory.Device     -> DeviceDetail(devices, activeDeviceId, onSelectDevice, onAddHost, onRemoveHost, brightness, onBrightnessChange, animations, query, onQueryChange, typeFilter, onTypeFilterChange, thumbnailCache, sendingAnimation, onSend, onReboot)
-            SettingsCategory.Appearance -> AppearanceDetail(isDark, currentPalette, onSetTheme, minimizeToTray, onSetMinimizeToTray)
+            SettingsCategory.Appearance -> AppearanceDetail(
+                isDark, currentPalette, onSetTheme, minimizeToTray, onSetMinimizeToTray,
+                launchAtStartup, onSetLaunchAtStartup, startMinimizedOnStartup, onSetStartMinimizedOnStartup, startupAvailable,
+            )
             SettingsCategory.Idle       -> IdleDetail(idleSettings, onIdleSettingsChange, idleStatus)
         }
     }
@@ -557,6 +580,11 @@ private fun AppearanceDetail(
     onSetTheme: (Boolean, ColorPalette) -> Unit,
     minimizeToTray: Boolean,
     onSetMinimizeToTray: (Boolean) -> Unit,
+    launchAtStartup: Boolean,
+    onSetLaunchAtStartup: (Boolean) -> Unit,
+    startMinimizedOnStartup: Boolean,
+    onSetStartMinimizedOnStartup: (Boolean) -> Unit,
+    startupAvailable: Boolean,
 ) {
     val theme = LocalAppTheme.current
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -586,6 +614,30 @@ private fun AppearanceDetail(
         ) {
             Text("MINIMIZE TO TRAY", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
             TogglePill(checked = minimizeToTray, onCheckedChange = onSetMinimizeToTray)
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("LAUNCH AT STARTUP", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+                TogglePill(checked = launchAtStartup, onCheckedChange = onSetLaunchAtStartup)
+            }
+            if (!startupAvailable) {
+                Text("Only available in the installed app.", color = theme.textSecondary, fontSize = 12.sp)
+            }
+            if (startupAvailable && launchAtStartup) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("START MINIMIZED", color = theme.textSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+                    TogglePill(checked = startMinimizedOnStartup, onCheckedChange = onSetStartMinimizedOnStartup)
+                }
+            }
         }
     }
 }

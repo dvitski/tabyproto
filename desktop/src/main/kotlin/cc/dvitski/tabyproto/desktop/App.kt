@@ -485,6 +485,8 @@ fun App(appState: AppState) {
         val idleSettings by appState.idleSettings.collectAsState()
         val idleStatus by appState.idleStatus.collectAsState()
         val minimizeToTray by appState.minimizeToTray.collectAsState()
+        val launchAtStartup by appState.launchAtStartup.collectAsState()
+        val startMinimizedOnStartup by appState.startMinimizedOnStartup.collectAsState()
         val total = appState.totalAnimations
         val thumbnailsReady = loadedCount >= total
         val snackbarHostState = remember { SnackbarHostState() }
@@ -574,6 +576,11 @@ fun App(appState: AppState) {
                                         onSetTheme = appState::setTheme,
                                         minimizeToTray = minimizeToTray,
                                         onSetMinimizeToTray = appState::setMinimizeToTray,
+                                        launchAtStartup = launchAtStartup,
+                                        onSetLaunchAtStartup = appState::setLaunchAtStartup,
+                                        startMinimizedOnStartup = startMinimizedOnStartup,
+                                        onSetStartMinimizedOnStartup = appState::setStartMinimizedOnStartup,
+                                        startupAvailable = appState.startupExePath != null,
                                         brightness = brightness,
                                         onBrightnessChange = appState::setBrightness,
                                         musicState = musicState,
