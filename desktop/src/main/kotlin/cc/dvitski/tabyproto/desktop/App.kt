@@ -136,6 +136,12 @@ class AppState {
     private val _minimizeToTray = MutableStateFlow(generalStore.loadMinimizeToTray())
     val minimizeToTray: StateFlow<Boolean> = _minimizeToTray.asStateFlow()
 
+    val startupExePath: java.io.File? = StartupLaunchManager.installedExePath()
+    private val _launchAtStartup = MutableStateFlow(generalStore.loadLaunchAtStartup())
+    val launchAtStartup: StateFlow<Boolean> = _launchAtStartup.asStateFlow()
+    private val _startMinimizedOnStartup = MutableStateFlow(generalStore.loadStartMinimizedOnStartup())
+    val startMinimizedOnStartup: StateFlow<Boolean> = _startMinimizedOnStartup.asStateFlow()
+
     private val _brightness = MutableStateFlow<Int?>(null)
     val brightness: StateFlow<Int?> = _brightness.asStateFlow()
     private var rampJob: Job? = null
@@ -194,6 +200,18 @@ class AppState {
     fun setMinimizeToTray(enabled: Boolean) {
         _minimizeToTray.value = enabled
         generalStore.saveMinimizeToTray(enabled)
+    }
+
+    fun setLaunchAtStartup(enabled: Boolean) {
+        _launchAtStartup.value = enabled
+        generalStore.saveLaunchAtStartup(enabled)
+        startupExePath?.let { StartupLaunchManager.sync(enabled, _startMinimizedOnStartup.value, it) }
+    }
+
+    fun setStartMinimizedOnStartup(enabled: Boolean) {
+        _startMinimizedOnStartup.value = enabled
+        generalStore.saveStartMinimizedOnStartup(enabled)
+        startupExePath?.let { StartupLaunchManager.sync(_launchAtStartup.value, enabled, it) }
     }
 
     fun setMusicDetectionEnabled(enabled: Boolean) {
