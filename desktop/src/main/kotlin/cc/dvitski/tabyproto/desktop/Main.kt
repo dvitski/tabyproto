@@ -21,10 +21,12 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.imageio.ImageIO
 
-fun main() = application {
+internal fun shouldStartMinimized(args: Array<String>): Boolean = args.contains("--minimized")
+
+fun main(args: Array<String>) = application {
     val appState = remember { AppState() }
     val minimizeToTray by appState.minimizeToTray.collectAsState()
-    var isWindowVisible by remember { mutableStateOf(true) }
+    var isWindowVisible by remember { mutableStateOf(!shouldStartMinimized(args)) }
     var awtWindow by remember { mutableStateOf<java.awt.Window?>(null) }
 
     fun showWindow() {
